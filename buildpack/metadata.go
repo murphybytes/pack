@@ -1,6 +1,8 @@
 package buildpack
 
-import "strings"
+import (
+	"strings"
+)
 
 type Buildpack struct {
 	ID      string `toml:"id"`
@@ -9,6 +11,14 @@ type Buildpack struct {
 	Dir     string
 	Version string
 }
+
+type TOML struct {
+	BP struct {
+		ID      string `toml:"id"`
+		Version string `toml:"version"`
+	} `toml:"buildpack"`
+}
+
 
 func (b *Buildpack) EscapedID() string {
 	return strings.Replace(b.ID, "/", "_", -1)

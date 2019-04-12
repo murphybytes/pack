@@ -87,7 +87,7 @@ func (f *BuilderFactory) Create(config BuilderConfig) error {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	orderTar, err := f.orderLayer(tmpDir, config.Groups)
+	orderTar, err := builder.OrderLayer(tmpDir, config.Groups)
 	if err != nil {
 		return fmt.Errorf(`failed to generate order.toml layer: %s`, err)
 	}

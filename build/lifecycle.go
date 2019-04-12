@@ -17,6 +17,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/buildpack/lifecycle"
 	"github.com/buildpack/lifecycle/image"
+	"github.com/buildpack/pack/builder"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
@@ -193,6 +194,7 @@ func createBuildpacksTars(tmpDir string, buildpacks []string, logger *logging.Lo
 			if runtime.GOOS == "windows" {
 				return nil, fmt.Errorf("directory buildpacks are not implemented on windows")
 			}
+			builder.BuildpackLayer(tmpDir, bp)
 			var buildpackTOML struct {
 				Buildpack lifecycle.Buildpack
 			}
@@ -220,36 +222,12 @@ func createBuildpacksTars(tmpDir string, buildpacks []string, logger *logging.Lo
 		)
 	}
 
-	orderTarPath, err := orderTar(tmpDir, buildpackGroup)
+	orderTarPath, err := builder.OrderLayer(tmpDir, []lifecycle.BuildpackGroup{{Buildpacks: buildpackGroup}})
 	if err != nil {
 		return nil, err
 	}
 	tars = append(tars, orderTarPath)
 	return tars, nil
-}
-
-func orderTar(tmpDir string, buildpacks []*lifecycle.Buildpack) (string, error) {
-	groups := lifecycle.BuildpackOrder{
-		lifecycle.BuildpackGroup{
-			Buildpacks: buildpacks,
-		},
-	}
-
-	var tomlBuilder strings.Builder
-	if err := toml.NewEncoder(&tomlBuilder).Encode(map[string]interface{}{"groups": groups}); err != nil {
-		return "", errors.Wrapf(err, "encoding order.toml: %#v", groups)
-	}
-
-	orderToml := tomlBuilder.String()
-	err := archive.CreateSingleFileTar(
-		filepath.Join(tmpDir, "order.tar"),
-		orderPath,
-		orderToml,
-	)
-	if err != nil {
-		return "", errors.Wrap(err, "converting order TOML to tar reader")
-	}
-	return filepath.Join(tmpDir, "order.tar"), nil
 }
 
 func parseBuildpack(ref string, logger *logging.Logger) (string, string) {
