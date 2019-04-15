@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/buildpack/pack/builder"
 	"github.com/fatih/color"
 	"github.com/onsi/gomega/ghttp"
 	"github.com/sclevine/spec"
@@ -57,26 +58,34 @@ func testBuildpackFetcher(t *testing.T, when spec.G, it spec.S) {
 		})
 
 		it("fetches from a relative directory", func() {
-			bp := buildpack.Buildpack{
+			bp := builder.BuildpackConfig{
 				ID:  "bp.one",
 				URI: filepath.Join("testdata", "buildpack"),
+				Latest: true,
 			}
 
 			out, err := subject.FetchBuildpack(".", bp)
 			h.AssertNil(t, err)
+			h.AssertEq(t, out.ID, "bp.one")
+			h.AssertEq(t, out.Version, "some-buildpack-version")
+			h.AssertEq(t, out.Latest, true)
 			h.AssertNotEq(t, out.Dir, "")
 			h.AssertDirContainsFileWithContents(t, out.Dir, "bin/detect", "I come from a directory\n")
 			h.AssertDirContainsFileWithContents(t, out.Dir, "bin/build", "I come from a directory\n")
 		})
 
 		it("fetches from a relative tgz", func() {
-			bp := buildpack.Buildpack{
+			bp := builder.BuildpackConfig{
 				ID:  "bp.one",
 				URI: filepath.Join("testdata", "buildpack.tgz"),
+				Latest: true,
 			}
 
 			out, err := subject.FetchBuildpack(".", bp)
 			h.AssertNil(t, err)
+			h.AssertEq(t, out.ID, "bp.one")
+			h.AssertEq(t, out.Version, "some-buildpack-version")
+			h.AssertEq(t, out.Latest, true)
 			h.AssertNotEq(t, out.Dir, "")
 			h.AssertDirContainsFileWithContents(t, out.Dir, "bin/detect", "I come from an archive\n")
 			h.AssertDirContainsFileWithContents(t, out.Dir, "bin/build", "I come from an archive\n")
@@ -86,12 +95,15 @@ func testBuildpackFetcher(t *testing.T, when spec.G, it spec.S) {
 			absPath, err := filepath.Abs(filepath.Join("testdata", "buildpack"))
 			h.AssertNil(t, err)
 
-			bp := buildpack.Buildpack{
+			bp := builder.BuildpackConfig{
 				ID:  "bp.one",
 				URI: absPath,
 			}
 			out, err := subject.FetchBuildpack(".", bp)
 			h.AssertNil(t, err)
+			h.AssertEq(t, out.ID, "bp.one")
+			h.AssertEq(t, out.Version, "some-buildpack-version")
+			h.AssertEq(t, out.Latest, false)
 			h.AssertNotEq(t, out.Dir, "")
 			h.AssertDirContainsFileWithContents(t, out.Dir, "bin/detect", "I come from a directory\n")
 			h.AssertDirContainsFileWithContents(t, out.Dir, "bin/build", "I come from a directory\n")
@@ -101,13 +113,16 @@ func testBuildpackFetcher(t *testing.T, when spec.G, it spec.S) {
 			absPath, err := filepath.Abs(filepath.Join("testdata", "buildpack.tgz"))
 			h.AssertNil(t, err)
 
-			bp := buildpack.Buildpack{
+			bp := builder.BuildpackConfig{
 				ID:  "bp.one",
 				URI: absPath,
 			}
 
 			out, err := subject.FetchBuildpack(".", bp)
 			h.AssertNil(t, err)
+			h.AssertEq(t, out.ID, "bp.one")
+			h.AssertEq(t, out.Version, "some-buildpack-version")
+			h.AssertEq(t, out.Latest, false)
 			h.AssertNotEq(t, out.Dir, "")
 			h.AssertDirContainsFileWithContents(t, out.Dir, "bin/detect", "I come from an archive\n")
 			h.AssertDirContainsFileWithContents(t, out.Dir, "bin/build", "I come from an archive\n")
@@ -117,13 +132,17 @@ func testBuildpackFetcher(t *testing.T, when spec.G, it spec.S) {
 			absPath, err := filepath.Abs(filepath.Join("testdata", "buildpack"))
 			h.AssertNil(t, err)
 
-			bp := buildpack.Buildpack{
+			bp :=  builder.BuildpackConfig{
 				ID:  "bp.one",
 				URI: "file://" + absPath,
+				Latest: true,
 			}
 
 			out, err := subject.FetchBuildpack(".", bp)
 			h.AssertNil(t, err)
+			h.AssertEq(t, out.ID, "bp.one")
+			h.AssertEq(t, out.Version, "some-buildpack-version")
+			h.AssertEq(t, out.Latest, true)
 			h.AssertNotEq(t, out.Dir, "")
 			h.AssertDirContainsFileWithContents(t, out.Dir, "bin/detect", "I come from a directory\n")
 			h.AssertDirContainsFileWithContents(t, out.Dir, "bin/build", "I come from a directory\n")
@@ -133,13 +152,16 @@ func testBuildpackFetcher(t *testing.T, when spec.G, it spec.S) {
 			absPath, err := filepath.Abs(filepath.Join("testdata", "buildpack.tgz"))
 			h.AssertNil(t, err)
 
-			bp := buildpack.Buildpack{
+			bp := builder.BuildpackConfig{
 				ID:  "bp.one",
 				URI: "file://" + absPath,
 			}
 
 			out, err := subject.FetchBuildpack(".", bp)
 			h.AssertNil(t, err)
+			h.AssertEq(t, out.ID, "bp.one")
+			h.AssertEq(t, out.Version, "some-buildpack-version")
+			h.AssertEq(t, out.Latest, false)
 			h.AssertNotEq(t, out.Dir, "")
 			h.AssertDirContainsFileWithContents(t, out.Dir, "bin/detect", "I come from an archive\n")
 			h.AssertDirContainsFileWithContents(t, out.Dir, "bin/build", "I come from an archive\n")
@@ -153,13 +175,17 @@ func testBuildpackFetcher(t *testing.T, when spec.G, it spec.S) {
 			})
 			defer server.Close()
 
-			bp := buildpack.Buildpack{
+			bp := builder.BuildpackConfig{
 				ID:  "bp.one",
 				URI: server.URL() + "/buildpack.tgz",
+				Latest: true,
 			}
 
 			out, err := subject.FetchBuildpack(".", bp)
 			h.AssertNil(t, err)
+			h.AssertEq(t, out.ID, "bp.one")
+			h.AssertEq(t, out.Version, "some-buildpack-version")
+			h.AssertEq(t, out.Latest, true)
 			h.AssertNotEq(t, out.Dir, "")
 			h.AssertDirContainsFileWithContents(t, out.Dir, "bin/detect", "I come from an archive\n")
 			h.AssertDirContainsFileWithContents(t, out.Dir, "bin/build", "I come from an archive\n")

@@ -3,9 +3,8 @@ package buildpack
 import "strings"
 
 type Buildpack struct {
-	ID      string `toml:"id"`
-	URI     string `toml:"uri"`
-	Latest  bool   `toml:"latest"`
+	ID      string
+	Latest  bool
 	Dir     string
 	Version string
 }

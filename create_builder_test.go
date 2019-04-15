@@ -10,11 +10,11 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/buildpack/pack/builder"
 	"github.com/fatih/color"
 
 	"github.com/buildpack/lifecycle"
 	"github.com/golang/mock/gomock"
-	"github.com/google/go-cmp/cmp"
 	"github.com/sclevine/spec"
 	"github.com/sclevine/spec/report"
 
@@ -87,8 +87,6 @@ func testBuilderFactory(t *testing.T, when spec.G, it spec.S) {
 					t.Fatalf("error creating builder config: %s", err)
 				}
 				h.AssertSameInstance(t, cfg.Image, mockBaseImage)
-				checkBuildpacks(t, cfg.Buildpacks)
-				checkGroups(t, cfg.Groups)
 				h.AssertEq(t, cfg.BuilderDir, "testdata")
 				h.AssertEq(t, cfg.RunImage, "some/run")
 				h.AssertEq(t, cfg.RunImageMirrors, []string{"gcr.io/some/run2"})
@@ -108,8 +106,6 @@ func testBuilderFactory(t *testing.T, when spec.G, it spec.S) {
 					t.Fatalf("error creating builder config: %s", err)
 				}
 				h.AssertSameInstance(t, config.Image, mockBaseImage)
-				checkBuildpacks(t, config.Buildpacks)
-				checkGroups(t, config.Groups)
 				h.AssertEq(t, config.BuilderDir, "testdata")
 			})
 
@@ -140,8 +136,6 @@ func testBuilderFactory(t *testing.T, when spec.G, it spec.S) {
 						t.Fatalf("error creating builder config: %s", err)
 					}
 					h.AssertSameInstance(t, config.Image, mockBaseImage)
-					checkBuildpacks(t, config.Buildpacks)
-					checkGroups(t, config.Groups)
 					h.AssertEq(t, config.BuilderDir, "testdata")
 				})
 			})
@@ -237,7 +231,6 @@ build-image = "packs/build:v3alpha2"
 
 				builderConfig = pack.BuilderConfig{
 					Image:           mockImage,
-					Buildpacks:      []buildpack.Buildpack{},
 					Groups:          []lifecycle.BuildpackGroup{},
 					BuilderDir:      "",
 					RunImage:        "myorg/run",
@@ -272,8 +265,8 @@ build-image = "packs/build:v3alpha2"
 
 			when("builder config contains buildpacks", func() {
 				it.Before(func() {
-					builderConfig.Buildpacks = []buildpack.Buildpack{
-						{ID: "some-buildpack-id", Version: "some-buildpack-version", Dir: "testdata/buildpack", Latest: true},
+					builderConfig.Buildpacks = []builder.BuildpackConfig{
+						{ID: "some-buildpack-id", URI: "testdata/buildpack", Latest: true},
 					}
 				})
 
@@ -311,53 +304,4 @@ build-image = "packs/build:v3alpha2"
 			})
 		})
 	})
-}
-
-func checkGroups(t *testing.T, groups []lifecycle.BuildpackGroup) {
-	t.Helper()
-	if diff := cmp.Diff(groups, []lifecycle.BuildpackGroup{
-		{Buildpacks: []*lifecycle.Buildpack{
-			{
-				ID:      "some.bp1",
-				Version: "1.2.3",
-			},
-			{
-				ID:      "some/bp2",
-				Version: "1.2.4",
-			},
-		}},
-		{Buildpacks: []*lifecycle.Buildpack{
-			{
-				ID:      "some.bp1",
-				Version: "1.2.3",
-			},
-		}},
-	}); diff != "" {
-		t.Fatalf("config has incorrect groups, %s", diff)
-	}
-}
-
-func checkBuildpacks(t *testing.T, buildpacks []buildpack.Buildpack) {
-	if diff := cmp.Diff(buildpacks, []buildpack.Buildpack{
-		{
-			ID:     "some.bp1",
-			Dir:    filepath.Join("testdata", "some-path-1"),
-			URI:    "some-path-1",
-			Latest: false,
-		},
-		{
-			ID:     "some/bp2",
-			Dir:    filepath.Join("testdata", "some-path-2"),
-			URI:    "some-path-2",
-			Latest: false,
-		},
-		{
-			ID:     "some/bp2",
-			Dir:    filepath.Join("testdata", "some-latest-path-2"),
-			URI:    "some-latest-path-2",
-			Latest: true,
-		},
-	}); diff != "" {
-		t.Fatalf("config has incorrect buildpacks, %s", diff)
-	}
 }

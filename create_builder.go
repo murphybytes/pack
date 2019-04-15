@@ -23,7 +23,7 @@ import (
 )
 
 type BuilderConfig struct {
-	Buildpacks      []buildpack.Buildpack
+	Buildpacks      []builder.BuildpackConfig
 	Groups          []lifecycle.BuildpackGroup
 	Image           lcimg.Image
 	BuilderDir      string // original location of builder.toml, used for interpreting relative paths in buildpack URIs
@@ -49,7 +49,7 @@ func (f *BuilderFactory) BuilderConfigFromFlags(ctx context.Context, flags Creat
 	builderConfig := BuilderConfig{}
 	builderConfig.BuilderDir = filepath.Dir(flags.BuilderTomlPath)
 
-	builderTOML := &builder.TOML{}
+	builderTOML := &builder.Config{}
 	_, err := toml.DecodeFile(flags.BuilderTomlPath, &builderTOML)
 	if err != nil {
 		return BuilderConfig{}, fmt.Errorf(`failed to decode builder config from file %s: %s`, flags.BuilderTomlPath, err)
@@ -69,14 +69,8 @@ func (f *BuilderFactory) BuilderConfigFromFlags(ctx context.Context, flags Creat
 	}
 	builderConfig.Image.Rename(flags.RepoName)
 	builderConfig.Groups = builderTOML.Groups
+	builderConfig.Buildpacks = builderTOML.Buildpacks
 
-	for _, b := range builderTOML.Buildpacks {
-		fetchedBuildpack, err := f.BuildpackFetcher.FetchBuildpack(builderConfig.BuilderDir, b)
-		if err != nil {
-			return BuilderConfig{}, err
-		}
-		builderConfig.Buildpacks = append(builderConfig.Buildpacks, fetchedBuildpack)
-	}
 	return builderConfig, nil
 }
 
@@ -87,6 +81,15 @@ func (f *BuilderFactory) Create(config BuilderConfig) error {
 	}
 	defer os.RemoveAll(tmpDir)
 
+	var buildpacks []buildpack.Buildpack
+	for _, b := range config.Buildpacks {
+		fetchedBuildpack, err := f.BuildpackFetcher.FetchBuildpack(config.BuilderDir, b)
+		if err != nil {
+			return err
+		}
+		buildpacks = append(buildpacks, fetchedBuildpack)
+	}
+
 	orderTar, err := f.orderLayer(tmpDir, config.Groups)
 	if err != nil {
 		return fmt.Errorf(`failed to generate order.toml layer: %s`, err)
@@ -96,7 +99,7 @@ func (f *BuilderFactory) Create(config BuilderConfig) error {
 	}
 
 	buildpacksMetadata := make([]builder.BuildpackMetadata, 0, len(config.Buildpacks))
-	for _, buildpack := range config.Buildpacks {
+	for _, buildpack := range buildpacks {
 		tarFile, err := f.buildpackLayer(tmpDir, &buildpack, config.BuilderDir)
 		if err != nil {
 			return fmt.Errorf(`failed to generate layer for buildpack %s: %s`, style.Symbol(buildpack.ID), err)
@@ -108,7 +111,7 @@ func (f *BuilderFactory) Create(config BuilderConfig) error {
 		buildpacksMetadata = append(buildpacksMetadata, builder.BuildpackMetadata{ID: buildpack.ID, Version: buildpack.Version, Latest: buildpack.Latest})
 	}
 
-	tarFile, err := f.latestLayer(config.Buildpacks, tmpDir, config.BuilderDir)
+	tarFile, err := f.latestLayer(buildpacks, tmpDir, config.BuilderDir)
 	if err != nil {
 		return fmt.Errorf(`failed generate layer for latest links: %s`, err)
 	}
@@ -290,7 +293,7 @@ func (f *BuilderFactory) latestLayer(buildpacks []buildpack.Buildpack, dest, bui
 	return tarFile, nil
 }
 
-func validateBuilderTOML(builderTOML *builder.TOML) error {
+func validateBuilderTOML(builderTOML *builder.Config) error {
 	if builderTOML == nil {
 		return errors.New("builder toml is empty")
 	}

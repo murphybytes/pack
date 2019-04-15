@@ -5,6 +5,8 @@ import (
 
 	"github.com/buildpack/lifecycle/image"
 
+	"github.com/buildpack/pack/builder"
+
 	"github.com/buildpack/pack/buildpack"
 )
 
@@ -15,5 +17,5 @@ type ImageFetcher interface {
 }
 
 type BuildpackFetcher interface {
-	FetchBuildpack(localSearchPath string, bp buildpack.Buildpack) (buildpack.Buildpack, error)
+	FetchBuildpack(localSearchPath string, config builder.BuildpackConfig) (buildpack.Buildpack, error)
 }

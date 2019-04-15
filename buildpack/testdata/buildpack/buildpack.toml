@@ -1,3 +1,3 @@
 [buildpack]
-id = "some-buildpack-id"
+id = "bp.one"
 version = "some-buildpack-version"
