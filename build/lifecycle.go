@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"context"
 	"fmt"
+	"github.com/buildpack/pack/buildpack"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -14,7 +15,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/BurntSushi/toml"
 	"github.com/buildpack/lifecycle"
 	"github.com/buildpack/lifecycle/image"
 	"github.com/buildpack/pack/builder"
@@ -22,20 +22,19 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
 
-	"github.com/buildpack/pack/archive"
 	"github.com/buildpack/pack/logging"
 	"github.com/buildpack/pack/style"
 )
 
 type Lifecycle struct {
-	BuilderImage string
-	Logger       *logging.Logger
-	Docker       *client.Client
-	LayersVolume string
-	AppVolume    string
-	uid, gid     int
-	appDir       string
-	appOnce      *sync.Once
+	BuilderImage   string
+	Logger         *logging.Logger
+	Docker         *client.Client
+	LayersVolume   string
+	AppVolume      string
+	uid, gid       int
+	appDir         string
+	appOnce        *sync.Once
 }
 
 type LifecycleConfig struct {
@@ -194,25 +193,14 @@ func createBuildpacksTars(tmpDir string, buildpacks []string, logger *logging.Lo
 			if runtime.GOOS == "windows" {
 				return nil, fmt.Errorf("directory buildpacks are not implemented on windows")
 			}
-			builder.BuildpackLayer(tmpDir, bp)
-			var buildpackTOML struct {
-				Buildpack lifecycle.Buildpack
+			bp := buildpack.Buildpack{
+				URI: "bp",
 			}
-
-			_, err = toml.DecodeFile(filepath.Join(bp, "buildpack.toml"), &buildpackTOML)
+			bpLayer, err := bp.MakeLayer(tmpDir)
 			if err != nil {
-				return nil, fmt.Errorf(`failed to decode buildpack.toml from "%s": %s`, bp, err)
-			}
-			id = buildpackTOML.Buildpack.ID
-			version = buildpackTOML.Buildpack.Version
-
-			tarFile := filepath.Join(tmpDir, fmt.Sprintf("%s.%s.tar", buildpackTOML.Buildpack.EscapedID(), version))
-
-			if err := archive.CreateTar(tarFile, bp, filepath.Join(buildpacksDir, buildpackTOML.Buildpack.EscapedID(), version), uid, gid); err != nil {
 				return nil, err
 			}
-
-			tars = append(tars, tarFile)
+			tars = append(tars, bpLayer)
 		} else {
 			id, version = parseBuildpack(bp, logger)
 		}

@@ -83,7 +83,7 @@ func testLifecycle(t *testing.T, when spec.G, it spec.S) {
 			})
 
 			when("#Run", func() {
-				it("runs the lifecycle phase on the builder image", func() {
+				it.Focus("runs the lifecycle phase on the builder image", func() {
 					phase, err := lifecycle.NewPhase("phase")
 					h.AssertNil(t, err)
 					assertRunSucceeds(t, phase, &outBuf, &errBuf)

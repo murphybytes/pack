@@ -97,7 +97,7 @@ func (f *BuilderFactory) Create(config BuilderConfig) error {
 
 	buildpacksMetadata := make([]builder.BuildpackMetadata, 0, len(config.Buildpacks))
 	for _, buildpack := range config.Buildpacks {
-		tarFile, err := f.buildpackLayer(tmpDir, &buildpack, config.BuilderDir)
+		tarFile, err := buildpack.MakeLayer(tmpDir)
 		if err != nil {
 			return fmt.Errorf(`failed to generate layer for buildpack %s: %s`, style.Symbol(buildpack.ID), err)
 		}
@@ -143,7 +143,7 @@ func (f *BuilderFactory) Create(config BuilderConfig) error {
 		return fmt.Errorf("failed to set metadata label: %s", err)
 	}
 
-	stackTar, err := f.stackLayer(tmpDir, config.RunImage, config.RunImageMirrors)
+	stackTar, err := builder.StackLayer(tmpDir, config.RunImage, config.RunImageMirrors)
 	if err != nil {
 		return fmt.Errorf(`failed to generate stack.toml layer: %s`, err)
 	}
@@ -162,105 +162,6 @@ func (f *BuilderFactory) Create(config BuilderConfig) error {
 	return nil
 }
 
-type order struct {
-	Groups []lifecycle.BuildpackGroup `toml:"groups"`
-}
-
-func (f *BuilderFactory) orderLayer(dest string, groups []lifecycle.BuildpackGroup) (layerTar string, err error) {
-	bpDir := filepath.Join(dest, "buildpacks")
-	err = os.Mkdir(bpDir, 0755)
-	if err != nil {
-		return "", err
-	}
-
-	orderFile, err := os.OpenFile(filepath.Join(bpDir, "order.toml"), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		return "", err
-	}
-	defer orderFile.Close()
-	err = toml.NewEncoder(orderFile).Encode(order{Groups: groups})
-	if err != nil {
-		return "", err
-	}
-	layerTar = filepath.Join(dest, "order.tar")
-	if err := archive.CreateTar(layerTar, bpDir, "/buildpacks", 0, 0); err != nil {
-		return "", err
-	}
-	return layerTar, nil
-}
-
-func (f *BuilderFactory) stackLayer(dest string, runImage string, mirrors []string) (layerTar string, err error) {
-	bpDir := filepath.Join(dest, "buildpacks")
-	if err := os.MkdirAll(bpDir, 0755); err != nil {
-		return "", err
-	}
-
-	stackFile, err := os.OpenFile(filepath.Join(bpDir, "stack.toml"), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		return "", err
-	}
-	defer stackFile.Close()
-
-	content := stack.Metadata{
-		RunImage: stack.RunImageMetadata{
-			Image:   runImage,
-			Mirrors: mirrors,
-		},
-	}
-	if err = toml.NewEncoder(stackFile).Encode(&content); err != nil {
-		return "", err
-	}
-
-	layerTar = filepath.Join(dest, "stack.tar")
-	if err := archive.CreateTar(layerTar, bpDir, "/buildpacks", 0, 0); err != nil {
-		return "", err
-	}
-
-	return layerTar, nil
-}
-
-type BuildpackData struct {
-	BP struct {
-		ID      string `toml:"id"`
-		Version string `toml:"version"`
-	} `toml:"buildpack"`
-}
-
-// buildpackLayer creates and returns the location of a tgz file for a buildpack layer. That file will reside in the `dest` directory.
-// The tgz file is either created from an initially local directory, or it is downloaded (and validated) from
-// a remote location if the buildpack uri uses the http(s) protocol.
-func (f *BuilderFactory) buildpackLayer(dest string, buildpack *buildpack.Buildpack, builderDir string) (layerTar string, err error) {
-	dir := buildpack.Dir
-
-	data, err := f.buildpackData(*buildpack, dir)
-	if err != nil {
-		return "", err
-	}
-	bp := data.BP
-	if buildpack.ID != bp.ID {
-		return "", fmt.Errorf("buildpack IDs did not match: %s != %s", buildpack.ID, bp.ID)
-	}
-	if bp.Version == "" {
-		return "", fmt.Errorf("buildpack.toml must provide version: %s", filepath.Join(buildpack.Dir, "buildpack.toml"))
-	}
-
-	buildpack.Version = bp.Version
-	tarFile := filepath.Join(dest, fmt.Sprintf("%s.%s.tar", buildpack.EscapedID(), bp.Version))
-	if err := archive.CreateTar(tarFile, dir, filepath.Join("/buildpacks", buildpack.EscapedID(), bp.Version), 0, 0); err != nil {
-		return "", err
-	}
-	return tarFile, err
-}
-
-func (f *BuilderFactory) buildpackData(buildpack buildpack.Buildpack, dir string) (*BuildpackData, error) {
-	data := &BuildpackData{}
-	_, err := toml.DecodeFile(filepath.Join(dir, "buildpack.toml"), &data)
-	if err != nil {
-		return nil, errors.Wrapf(err, "reading buildpack.toml from buildpack: %s", dir)
-	}
-	return data, nil
-}
-
 func (f *BuilderFactory) latestLayer(buildpacks []buildpack.Buildpack, dest, builderDir string) (string, error) {
 	layerDir := filepath.Join(dest, "latest-layer")
 	err := os.Mkdir(layerDir, 0755)
@@ -269,15 +170,11 @@ func (f *BuilderFactory) latestLayer(buildpacks []buildpack.Buildpack, dest, bui
 	}
 	for _, bp := range buildpacks {
 		if bp.Latest {
-			data, err := f.buildpackData(bp, bp.Dir)
-			if err != nil {
-				return "", err
-			}
 			err = os.Mkdir(filepath.Join(layerDir, bp.EscapedID()), 0755)
 			if err != nil {
 				return "", err
 			}
-			err = os.Symlink(filepath.Join("/", "buildpacks", bp.EscapedID(), data.BP.Version), filepath.Join(layerDir, bp.EscapedID(), "latest"))
+			err = os.Symlink(filepath.Join("/", "buildpacks", bp.EscapedID(), bp.Version), filepath.Join(layerDir, bp.EscapedID(), "latest"))
 			if err != nil {
 				return "", err
 			}

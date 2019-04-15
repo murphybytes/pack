@@ -3,6 +3,7 @@ package buildpack
 import (
 	"crypto/sha256"
 	"fmt"
+	"github.com/BurntSushi/toml"
 	"github.com/buildpack/pack/archive"
 	"github.com/pkg/errors"
 	"io"
@@ -29,29 +30,50 @@ func NewFetcher(logger Logger, cacheDir string) *Fetcher {
 	}
 }
 
-func (f *Fetcher) FetchBuildpack(localSearchPath string, bp Buildpack) (out Buildpack, err error) {
-	out = Buildpack{
-		ID:      bp.ID,
-		URI:     bp.URI,
-		Latest:  bp.Latest,
-		Version: bp.Version,
-	}
-
+func (f *Fetcher) FetchBuildpack(localSearchPath string, bp Buildpack) (Buildpack, error) {
 	bpURL, err := url.Parse(bp.URI)
 	if err != nil {
-		return out, err
+		return Buildpack{}, err
 	}
 
+	var dir string
 	switch bpURL.Scheme {
 	case "", "file":
-		out.Dir, err = f.handleFile(localSearchPath, bpURL)
+		dir, err = f.handleFile(localSearchPath, bpURL)
 	case "http", "https":
-		out.Dir, err = f.handleHTTP(bp)
+		dir, err = f.handleHTTP(bp)
 	default:
-		return out, fmt.Errorf("unsupported protocol in URI %q", bp.URI)
+		return Buildpack{}, fmt.Errorf("unsupported protocol in URI %q", bp.URI)
 	}
 
-	return out, err
+	md, err := readMetadataFile(filepath.Join(dir, "buildpack.toml"))
+	if err != nil {
+		return Buildpack{}, err
+	}
+
+	if bp.ID != "" && bp.ID != md.BP.ID {
+		return Buildpack{}, fmt.Errorf("buildpack IDs did not match: %s != %s", bp.ID, md.BP.ID)
+	}
+	if md.BP.Version == "" {
+		return Buildpack{}, fmt.Errorf("buildpack.toml must provide version: %s", filepath.Join(dir, "buildpack.toml"))
+	}
+
+	return 	Buildpack{
+		ID:      md.BP.ID,
+		URI:     bp.URI,
+		Latest:  bp.Latest,
+		Version: md.BP.Version,
+		Dir: dir,
+	}, nil
+}
+
+func readMetadataFile(path string) (*TOML, error) {
+	md := &TOML{}
+	_, err := toml.DecodeFile(path, md)
+	if err != nil {
+		return nil, errors.Wrapf(err, "reading buildpack.toml from path: %s", path)
+	}
+	return md, nil
 }
 
 func (f *Fetcher) handleFile(localSearchPath string, bpURL *url.URL) (string, error) {

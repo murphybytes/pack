@@ -1,16 +1,12 @@
 package builder
 
 import (
-	"fmt"
+	"github.com/buildpack/pack/stack"
 	"os"
 	"path/filepath"
 
 	"github.com/BurntSushi/toml"
 	"github.com/buildpack/lifecycle"
-	"github.com/pkg/errors"
-
-	"github.com/buildpack/pack/buildpack"
-
 	"github.com/buildpack/pack/archive"
 )
 
@@ -41,34 +37,32 @@ func OrderLayer(dest string, groups []lifecycle.BuildpackGroup) (layerTar string
 	return layerTar, nil
 }
 
-func BuildpackLayer(dest, bpDir string, buildpack *buildpack.Buildpack) (layerTar string, err error) {
-	dir := buildpack.Dir
+func StackLayer(dest string, runImage string, mirrors []string) (layerTar string, err error) {
+	bpDir := filepath.Join(dest, "buildpacks")
+	if err := os.MkdirAll(bpDir, 0755); err != nil {
+		return "", err
+	}
 
-	data, err := buildpackData(dir)
+	stackFile, err := os.OpenFile(filepath.Join(bpDir, "stack.toml"), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return "", err
 	}
-	bp := data.BP
-	if buildpack.ID != bp.ID {
-		return "", fmt.Errorf("buildpack IDs did not match: %s != %s", buildpack.ID, bp.ID)
-	}
-	if bp.Version == "" {
-		return "", fmt.Errorf("buildpack.toml must provide version: %s", filepath.Join(buildpack.Dir, "buildpack.toml"))
-	}
+	defer stackFile.Close()
 
-	buildpack.Version = bp.Version
-	tarFile := filepath.Join(dest, fmt.Sprintf("%s.%s.tar", buildpack.EscapedID(), bp.Version))
-	if err := archive.CreateTar(tarFile, dir, filepath.Join("/buildpacks", buildpack.EscapedID(), bp.Version), 0, 0); err != nil {
+	content := stack.Metadata{
+		RunImage: stack.RunImageMetadata{
+			Image:   runImage,
+			Mirrors: mirrors,
+		},
+	}
+	if err = toml.NewEncoder(stackFile).Encode(&content); err != nil {
 		return "", err
 	}
-	return tarFile, err
-}
 
-func buildpackData(dir string) (*buildpack.TOML, error) {
-	data := &buildpack.TOML{}
-	_, err := toml.DecodeFile(filepath.Join(dir, "buildpack.toml"), &data)
-	if err != nil {
-		return nil, errors.Wrapf(err, "reading buildpack.toml from buildpack: %s", dir)
+	layerTar = filepath.Join(dest, "stack.tar")
+	if err := archive.CreateTar(layerTar, bpDir, "/buildpacks", 0, 0); err != nil {
+		return "", err
 	}
-	return data, nil
+
+	return layerTar, nil
 }

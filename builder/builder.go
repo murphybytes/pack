@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/google/go-containerregistry/pkg/name"
+	"strconv"
 
 	"github.com/buildpack/lifecycle/image"
 	"github.com/pkg/errors"
@@ -53,6 +54,27 @@ func (b *Builder) GetMetadata() (*Metadata, error) {
 	}
 
 	return &metadata, nil
+}
+
+func (b *Builder) GetUserAndGroupIDs() (int, int, error) {
+	sUID, err := b.image.Env("CNB_USER_ID")
+	if err != nil {
+		return 0, 0, errors.Wrap(err, "reading builder env variables")
+	}
+	sGID, err := b.image.Env("CNB_GROUP_ID")
+	if err != nil {
+		return 0, 0, errors.Wrap(err, "reading builder env variables")
+	}
+	var uid, gid int
+	uid, err = strconv.Atoi(sUID)
+	if err != nil {
+		return 0, 0, errors.Wrapf(err, "parsing pack uid: %s", sUID)
+	}
+	gid, err = strconv.Atoi(sGID)
+	if err != nil {
+		return 0, 0, errors.Wrapf(err, "parsing pack gid: %s", sGID)
+	}
+	return uid, gid, nil
 }
 
 func (b *Builder) GetLocalRunImageMirrors() ([]string, error) {
