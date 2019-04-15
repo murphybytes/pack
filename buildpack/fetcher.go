@@ -13,8 +13,6 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/pkg/errors"
 
-	"github.com/buildpack/pack/builder"
-
 	"github.com/buildpack/pack/archive"
 )
 
@@ -41,8 +39,8 @@ func NewFetcher(logger Logger, cacheDir string) *Fetcher {
 	}
 }
 
-func (f *Fetcher) FetchBuildpack(localSearchPath string, config builder.BuildpackConfig) (Buildpack, error) {
-	bpURL, err := url.Parse(config.URI)
+func (f *Fetcher) FetchBuildpack(localSearchPath string, uri string, latest bool) (Buildpack, error) {
+	bpURL, err := url.Parse(uri)
 	if err != nil {
 		return Buildpack{}, err
 	}
@@ -52,9 +50,9 @@ func (f *Fetcher) FetchBuildpack(localSearchPath string, config builder.Buildpac
 	case "", "file":
 		dir, err = f.handleFile(localSearchPath, bpURL)
 	case "http", "https":
-		dir, err = f.handleHTTP(config.URI)
+		dir, err = f.handleHTTP(uri)
 	default:
-		return Buildpack{}, fmt.Errorf("unsupported protocol in URI %q", config.URI)
+		return Buildpack{}, fmt.Errorf("unsupported protocol in URI %q", uri)
 	}
 
 	data, err := readTOML(filepath.Join(dir, "buildpack.toml"))
@@ -62,15 +60,15 @@ func (f *Fetcher) FetchBuildpack(localSearchPath string, config builder.Buildpac
 		return Buildpack{}, err
 	}
 
-	if config.ID != "" && config.ID != data.Buildpack.ID {
-		return Buildpack{}, fmt.Errorf("id from buildpack.toml '%s' does not match id from builder config '%s'", data.Buildpack.ID, config.ID)
-	}
+	//if config.ID != "" && config.ID != data.Buildpack.ID {
+	//	return Buildpack{}, fmt.Errorf("id from buildpack.toml '%s' does not match id from builder config '%s'", data.Buildpack.ID, config.ID)
+	//}
 
 	return Buildpack{
 		Dir:     dir,
 		ID:      data.Buildpack.ID,
 		Version: data.Buildpack.Version,
-		Latest:  config.Latest,
+		Latest:  latest,
 	}, err
 }
 

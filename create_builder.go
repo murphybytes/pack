@@ -94,6 +94,7 @@ func (f *BuilderFactory) Create(config BuilderConfig) error {
 	if err != nil {
 		return fmt.Errorf(`failed to generate order.toml layer: %s`, err)
 	}
+
 	if err := config.Image.AddLayer(orderTar); err != nil {
 		return fmt.Errorf(`failed append order.toml layer to image: %s`, err)
 	}
@@ -181,14 +182,17 @@ func (f *BuilderFactory) orderLayer(dest string, groups []lifecycle.BuildpackGro
 		return "", err
 	}
 	defer orderFile.Close()
+
 	err = toml.NewEncoder(orderFile).Encode(order{Groups: groups})
 	if err != nil {
 		return "", err
 	}
+
 	layerTar = filepath.Join(dest, "order.tar")
 	if err := archive.CreateTar(layerTar, bpDir, "/buildpacks", 0, 0); err != nil {
 		return "", err
 	}
+
 	return layerTar, nil
 }
 

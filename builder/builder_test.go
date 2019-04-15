@@ -173,4 +173,67 @@ func testBuilder(t *testing.T, when spec.G, it spec.S) {
 			})
 		})
 	})
+
+	when("#GetUserAndGroupIDs", func() {
+		when("the CNB_USER_ID and CNB_GROUP_ID are set on the image", func() {
+			it.Before(func() {
+				mockImage.EXPECT().Env("CNB_USER_ID").Return("1234", nil)
+				mockImage.EXPECT().Env("CNB_GROUP_ID").Return("4321", nil)
+			})
+
+			it("should return the ids", func() {
+				uid, gid, err := subject.GetUserAndGroupIDs()
+				h.AssertNil(t, err)
+				h.AssertEq(t, uid, 1234)
+				h.AssertEq(t, gid, 4321)
+			})
+		})
+
+		when("there is no CNB_USER_ID env var", func() {
+			it.Before(func() {
+				mockImage.EXPECT().Env("CNB_USER_ID").Return("", nil)
+			})
+
+			it("returns an error", func() {
+				_, _, err := subject.GetUserAndGroupIDs()
+				h.AssertError(t, err, "builder 'some/builder' missing required env var 'CNB_USER_ID'")
+			})
+		})
+
+		when("there is no CNB_GROUP_ID env var", func() {
+			it.Before(func() {
+				mockImage.EXPECT().Env("CNB_USER_ID").Return("1234", nil)
+				mockImage.EXPECT().Env("CNB_GROUP_ID").Return("", nil)
+			})
+
+			it("returns an error", func() {
+				_, _, err := subject.GetUserAndGroupIDs()
+				h.AssertError(t, err, "builder 'some/builder' missing required env var 'CNB_GROUP_ID'")
+			})
+		})
+
+		when("the CNB_USER_ID env var value is not an integer", func() {
+			it.Before(func() {
+				mockImage.EXPECT().Env("CNB_USER_ID").Return("not an int", nil)
+				mockImage.EXPECT().Env("CNB_GROUP_ID").Return("4321", nil)
+			})
+
+			it("returns an error", func() {
+				_, _, err := subject.GetUserAndGroupIDs()
+				h.AssertError(t, err, "failed to parse 'CNB_USER_ID', value 'not an int' should be an integer")
+			})
+		})
+
+		when("the CNB_GROUP_ID env var value is not an integer", func() {
+			it.Before(func() {
+				mockImage.EXPECT().Env("CNB_USER_ID").Return("1234", nil)
+				mockImage.EXPECT().Env("CNB_GROUP_ID").Return("not an int", nil)
+			})
+
+			it("returns an error", func() {
+				_, _, err := subject.GetUserAndGroupIDs()
+				h.AssertError(t, err, "failed to parse 'CNB_GROUP_ID', value 'not an int' should be an integer")
+			})
+		})
+	})
 }

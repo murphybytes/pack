@@ -3,12 +3,15 @@ package builder
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
+
 	"github.com/google/go-containerregistry/pkg/name"
+
+	"github.com/buildpack/pack/config"
 
 	"github.com/buildpack/lifecycle/image"
 	"github.com/pkg/errors"
 
-	"github.com/buildpack/pack/config"
 	"github.com/buildpack/pack/style"
 )
 
@@ -16,6 +19,10 @@ type Builder struct {
 	image  image.Image
 	config *config.Config
 }
+
+
+// modify an existing builder addBuildpack, setOrder, addEnv
+// new builder from scratch stack, buildpacks, order
 
 func NewBuilder(img image.Image, cfg *config.Config) *Builder {
 	return &Builder{
@@ -94,6 +101,35 @@ func (b *Builder) GetRunImageByRepoName(repoName string) (runImage string, err e
 	}
 
 	return metadata.Stack.RunImage.Image, nil
+}
+
+func (b *Builder) GetUserAndGroupIDs() (int, int, error) {
+	sUID, err := b.image.Env("CNB_USER_ID")
+	if err != nil {
+		return 0, 0, errors.Wrap(err, "reading builder env variables")
+	} else if sUID == "" {
+		return 0, 0, fmt.Errorf("builder '%s' missing required env var 'CNB_USER_ID'", b.image.Name())
+	}
+
+	sGID, err := b.image.Env("CNB_GROUP_ID")
+	if err != nil {
+		return 0, 0, errors.Wrap(err, "reading builder env variables")
+	} else if sGID == "" {
+		return 0, 0, fmt.Errorf("builder '%s' missing required env var 'CNB_GROUP_ID'", b.image.Name())
+	}
+
+	var uid, gid int
+	uid, err = strconv.Atoi(sUID)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to parse 'CNB_USER_ID', value '%s' should be an integer", sUID)
+	}
+
+	gid, err = strconv.Atoi(sGID)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to parse 'CNB_GROUP_ID', value '%s' should be an integer", sGID)
+	}
+
+	return uid, gid, nil
 }
 
 func registry(imageName string) (string, error) {
