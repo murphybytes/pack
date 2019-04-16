@@ -2,8 +2,11 @@ package builder
 
 import (
 	"archive/tar"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/BurntSushi/toml"
+	"github.com/buildpack/pack/stack"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -22,6 +25,7 @@ type Builder2 struct {
 	buildpacks []buildpack.Buildpack
 	metadata   Metadata
 	uid, gid   int
+	stackID    string
 }
 
 func New(img image.Image, name string) (*Builder2, error) {
@@ -29,11 +33,19 @@ func New(img image.Image, name string) (*Builder2, error) {
 	if err != nil {
 		return nil, err
 	}
+	stackID, err := img.Label("io.buildpacks.stack.id")
+	if err != nil {
+		return nil, errors.Wrapf(err, "get label 'io.buildpacks.stack.id' from image '%s'", img.Name())
+	}
+	if stackID == "" {
+		return nil, fmt.Errorf("image '%s' missing 'io.buildpacks.stack.id' label'", img.Name())
+	}
 	img.Rename(name)
 	return &Builder2{
-		image: img,
-		uid:   uid,
-		gid:   gid,
+		image:   img,
+		uid:     uid,
+		gid:     gid,
+		stackID: stackID,
 	}, nil
 }
 
@@ -83,6 +95,22 @@ func (b *Builder2) Save() error {
 		}
 	}
 
+	orderTar, err := b.orderLayer(tmpDir)
+	if err != nil {
+		return err
+	}
+	if err := b.image.AddLayer(orderTar); err != nil {
+		return errors.Wrapf(err, "adding order.tar layer")
+	}
+
+	stackTar, err := b.stackLayer(tmpDir)
+	if err != nil {
+		return err
+	}
+	if err := b.image.AddLayer(stackTar); err != nil {
+		return errors.Wrapf(err, "adding stack.tar layer")
+	}
+
 	label, err := json.Marshal(b.metadata)
 	if err != nil {
 		return fmt.Errorf(`failed marshal builder image metadata: %s`, err)
@@ -94,6 +122,43 @@ func (b *Builder2) Save() error {
 
 	_, err = b.image.Save()
 	return err
+}
+
+func (b *Builder2) orderLayer(dest string) (string, error) {
+	orderTOML := &bytes.Buffer{}
+	err := toml.NewEncoder(orderTOML).Encode(OrderTOML{Groups: b.metadata.Groups})
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to marshal order.toml")
+	}
+
+	layerTar := filepath.Join(dest, "order.tar")
+	err = archive.CreateSingleFileTar(layerTar, "/buildpacks/order.toml", orderTOML.String())
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to create order.toml layer tar")
+	}
+
+	return layerTar, nil
+}
+
+func (b *Builder2) stackLayer(dest string) (string, error) {
+	stackTOML := &bytes.Buffer{}
+	err := toml.NewEncoder(stackTOML).Encode(StackTOML{
+		Stack: StackTOMLStack{
+			RunImage:        b.metadata.Stack.RunImage.Image,
+			RunImageMirrors: b.metadata.Stack.RunImage.Mirrors,
+		},
+	})
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to marshal stack.toml")
+	}
+
+	layerTar := filepath.Join(dest, "stack.tar")
+	err = archive.CreateSingleFileTar(layerTar, "/buildpacks/stack.toml", stackTOML.String())
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to create stack.toml layer tar")
+	}
+
+	return layerTar, nil
 }
 
 func (b *Builder2) buildpackLayer(dest string, bp buildpack.Buildpack) (string, error) {
@@ -108,18 +173,18 @@ func (b *Builder2) buildpackLayer(dest string, bp buildpack.Buildpack) (string, 
 	tw := tar.NewWriter(fh)
 	defer tw.Close()
 
-	if err := archive.WriteDirToTar(tw, bp.Dir, filepath.Join("/buildpacks", bp.EscapedID(), bp.Version), b.uid, b.gid); err != nil {
+	if err := archive.WriteDirToTar(tw, bp.Dir, fmt.Sprintf("/buildpacks/%s/%s", bp.EscapedID(), bp.Version), b.uid, b.gid); err != nil {
 		return "", errors.Wrapf(err, "creating layer tar for buildpack '%s:%s'", bp.ID, bp.Version)
 	}
 
 	if bp.Latest {
 		err := tw.WriteHeader(&tar.Header{
-			Name:     filepath.Join("/buildpacks", bp.EscapedID(), "latest"),
-			Linkname: filepath.Join("/buildpacks", bp.EscapedID(), bp.Version),
+			Name:     fmt.Sprintf("/buildpacks/%s/%s", bp.EscapedID(), "latest"),
+			Linkname: fmt.Sprintf("/buildpacks/%s/%s", bp.EscapedID(), bp.Version),
 			Typeflag: tar.TypeSymlink,
-			Mode:    0666,
-			Uid: b.uid,
-			Gid: b.gid,
+			Mode:     0666,
+			Uid:      b.uid,
+			Gid:      b.gid,
 		})
 		if err != nil {
 			return "", errors.Wrapf(err, "creating latest symlink for buildpack '%s:%s'", bp.ID, bp.Version)
@@ -129,7 +194,24 @@ func (b *Builder2) buildpackLayer(dest string, bp buildpack.Buildpack) (string, 
 	return layerTar, nil
 }
 
-func (b *Builder2) AddBuildpack(bp buildpack.Buildpack) {
+func (b *Builder2) AddBuildpack(bp buildpack.Buildpack) error {
+	if !bp.SupportsStack(b.stackID) {
+		return fmt.Errorf("buildpack '%s:%s' does not support stack '%s'", bp.ID, bp.Version, b.stackID)
+	}
 	b.buildpacks = append(b.buildpacks, bp)
 	b.metadata.Buildpacks = append(b.metadata.Buildpacks, BuildpackMetadata{ID: bp.ID, Version: bp.Version, Latest: bp.Latest})
+	return nil
+}
+
+func (b *Builder2) SetOrder(order []GroupMetadata) {
+	b.metadata.Groups = order
+}
+
+func (b *Builder2) SetStackInfo(stackConfig StackConfig) {
+	b.metadata.Stack = stack.Metadata{
+		RunImage: stack.RunImageMetadata{
+			Image:   stackConfig.RunImage,
+			Mirrors: stackConfig.RunImageMirrors,
+		},
+	}
 }

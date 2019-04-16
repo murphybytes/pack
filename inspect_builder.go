@@ -17,7 +17,7 @@ type BuilderInfo struct {
 	RunImageMirrors      []string
 	LocalRunImageMirrors []string
 	Buildpacks           []BuildpackInfo
-	Groups               [][]BuildpackInfo
+	Groups               []builder.GroupMetadata
 }
 
 type BuildpackInfo struct {
@@ -57,20 +57,13 @@ func (c *Client) InspectBuilder(name string, daemon bool) (*BuilderInfo, error) 
 		buildpacks = append(buildpacks, buildpackMetadataToInfo(bp))
 	}
 
-	groups := make([][]BuildpackInfo, len(metadata.Groups))
-	for i, group := range metadata.Groups {
-		for _, bp := range group.Buildpacks {
-			groups[i] = append(groups[i], buildpackMetadataToInfo(bp))
-		}
-	}
-
 	return &BuilderInfo{
 		Stack:                stackID,
 		RunImage:             metadata.Stack.RunImage.Image,
 		RunImageMirrors:      metadata.Stack.RunImage.Mirrors,
 		LocalRunImageMirrors: localMirrors,
 		Buildpacks:           buildpacks,
-		Groups:               groups,
+		Groups:               metadata.Groups,
 	}, nil
 }
 

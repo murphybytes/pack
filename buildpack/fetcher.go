@@ -21,10 +21,11 @@ type Logger interface {
 }
 
 type buildpackTOML struct {
-	Buildpack struct{
+	Buildpack struct {
 		ID      string `toml:"id"`
 		Version string `toml:"version"`
 	} `toml:"buildpack"`
+	Stacks []Stack `toml:"stacks"`
 }
 
 type Fetcher struct {
@@ -39,7 +40,7 @@ func NewFetcher(logger Logger, cacheDir string) *Fetcher {
 	}
 }
 
-func (f *Fetcher) FetchBuildpack(localSearchPath string, uri string, latest bool) (Buildpack, error) {
+func (f *Fetcher) FetchBuildpack(localSearchPath string, uri string) (Buildpack, error) {
 	bpURL, err := url.Parse(uri)
 	if err != nil {
 		return Buildpack{}, err
@@ -60,15 +61,11 @@ func (f *Fetcher) FetchBuildpack(localSearchPath string, uri string, latest bool
 		return Buildpack{}, err
 	}
 
-	//if config.ID != "" && config.ID != data.Buildpack.ID {
-	//	return Buildpack{}, fmt.Errorf("id from buildpack.toml '%s' does not match id from builder config '%s'", data.Buildpack.ID, config.ID)
-	//}
-
 	return Buildpack{
 		Dir:     dir,
 		ID:      data.Buildpack.ID,
 		Version: data.Buildpack.Version,
-		Latest:  latest,
+		Stacks:  data.Stacks,
 	}, err
 }
 

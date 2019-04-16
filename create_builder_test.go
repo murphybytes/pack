@@ -10,10 +10,10 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/buildpack/pack/builder"
 	"github.com/fatih/color"
 
-	"github.com/buildpack/lifecycle"
+	"github.com/buildpack/pack/builder"
+
 	"github.com/golang/mock/gomock"
 	"github.com/sclevine/spec"
 	"github.com/sclevine/spec/report"
@@ -231,7 +231,7 @@ build-image = "packs/build:v3alpha2"
 
 				builderConfig = pack.BuilderConfig{
 					Image:           mockImage,
-					Groups:          []lifecycle.BuildpackGroup{},
+					Groups:          []builder.GroupMetadata{},
 					BuilderDir:      "",
 					RunImage:        "myorg/run",
 					RunImageMirrors: []string{"gcr.io/myorg/run"},
@@ -281,7 +281,7 @@ build-image = "packs/build:v3alpha2"
 
 			when("builder config contains groups", func() {
 				it.Before(func() {
-					builderConfig.Groups = []lifecycle.BuildpackGroup{{Buildpacks: []*lifecycle.Buildpack{{ID: "bpId", Version: "bpVersion"}}}}
+					builderConfig.Groups = []builder.GroupMetadata{{Buildpacks: []builder.GroupBuildpack{{ID: "bpId", Version: "bpVersion"}}}}
 				})
 
 				it("should write a 'order.toml' that lists buildpack groups", func() {
@@ -298,7 +298,7 @@ build-image = "packs/build:v3alpha2"
 					h.AssertNil(t, factory.Create(builderConfig))
 					h.AssertEq(t,
 						labels["io.buildpacks.builder.metadata"],
-						`{"buildpacks":[],"groups":[{"buildpacks":[{"id":"bpId","version":"bpVersion","latest":false}]}],"stack":{"runImage":{"image":"myorg/run","mirrors":["gcr.io/myorg/run"]}}}`,
+						`{"buildpacks":[],"groups":[{"buildpacks":[{"id":"bpId","version":"bpVersion"}]}],"stack":{"runImage":{"image":"myorg/run","mirrors":["gcr.io/myorg/run"]}}}`,
 					)
 				})
 			})

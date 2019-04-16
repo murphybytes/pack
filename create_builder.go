@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 
 	"github.com/BurntSushi/toml"
-	"github.com/buildpack/lifecycle"
 	lcimg "github.com/buildpack/lifecycle/image"
 	"github.com/pkg/errors"
 
@@ -24,7 +23,7 @@ import (
 
 type BuilderConfig struct {
 	Buildpacks      []builder.BuildpackConfig
-	Groups          []lifecycle.BuildpackGroup
+	Groups          []builder.GroupMetadata
 	Image           lcimg.Image
 	BuilderDir      string // original location of builder.toml, used for interpreting relative paths in buildpack URIs
 	RunImage        string
@@ -83,10 +82,14 @@ func (f *BuilderFactory) Create(config BuilderConfig) error {
 
 	var buildpacks []buildpack.Buildpack
 	for _, b := range config.Buildpacks {
-		fetchedBuildpack, err := f.BuildpackFetcher.FetchBuildpack(config.BuilderDir, b)
+		fetchedBuildpack, err := f.BuildpackFetcher.FetchBuildpack(config.BuilderDir, b.URI)
 		if err != nil {
 			return err
 		}
+		if b.ID != "" && fetchedBuildpack.ID != b.ID {
+			return fmt.Errorf("buildpack from uri '%s' has id '%s' which does not match id '%s' from builder config", b.URI, fetchedBuildpack.ID, b.ID)
+		}
+		fetchedBuildpack.Latest = b.Latest
 		buildpacks = append(buildpacks, fetchedBuildpack)
 	}
 
@@ -122,9 +125,9 @@ func (f *BuilderFactory) Create(config BuilderConfig) error {
 
 	groupsMetadata := make([]builder.GroupMetadata, 0, len(config.Groups))
 	for _, group := range config.Groups {
-		groupBuildpacks := make([]builder.BuildpackMetadata, 0, len(group.Buildpacks))
+		groupBuildpacks := make([]builder.GroupBuildpack, 0, len(group.Buildpacks))
 		for _, buildpack := range group.Buildpacks {
-			groupBuildpacks = append(groupBuildpacks, builder.BuildpackMetadata{ID: buildpack.ID, Version: buildpack.Version})
+			groupBuildpacks = append(groupBuildpacks, builder.GroupBuildpack{ID: buildpack.ID, Version: buildpack.Version})
 		}
 		groupsMetadata = append(groupsMetadata, builder.GroupMetadata{Buildpacks: groupBuildpacks})
 	}
@@ -137,7 +140,7 @@ func (f *BuilderFactory) Create(config BuilderConfig) error {
 			},
 		},
 		Buildpacks: buildpacksMetadata,
-		Groups:     groupsMetadata,
+		Groups:     config.Groups,
 	})
 	if err != nil {
 		return fmt.Errorf(`failed marshal builder image metadata: %s`, err)
@@ -167,10 +170,10 @@ func (f *BuilderFactory) Create(config BuilderConfig) error {
 }
 
 type order struct {
-	Groups []lifecycle.BuildpackGroup `toml:"groups"`
+	Groups []builder.GroupMetadata `toml:"groups"`
 }
 
-func (f *BuilderFactory) orderLayer(dest string, groups []lifecycle.BuildpackGroup) (layerTar string, err error) {
+func (f *BuilderFactory) orderLayer(dest string, groups []builder.GroupMetadata) (layerTar string, err error) {
 	bpDir := filepath.Join(dest, "buildpacks")
 	err = os.Mkdir(bpDir, 0755)
 	if err != nil {

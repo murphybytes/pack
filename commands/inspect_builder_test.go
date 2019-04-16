@@ -3,9 +3,12 @@ package commands_test
 import (
 	"bytes"
 	"errors"
+	"testing"
+
+	"github.com/buildpack/pack/builder"
+
 	"github.com/buildpack/pack"
 	"github.com/buildpack/pack/config"
-	"testing"
 
 	"github.com/golang/mock/gomock"
 	"github.com/sclevine/spec"
@@ -118,7 +121,11 @@ ERROR: failed to inspect image 'some/image': some local error
 					RunImageMirrors:      []string{"first/default", "second/default"},
 					LocalRunImageMirrors: []string{"first/image", "second/image"},
 					Buildpacks:           buildpacks,
-					Groups:               [][]pack.BuildpackInfo{buildpacks},
+					Groups: []builder.GroupMetadata{
+						{Buildpacks: []builder.GroupBuildpack{
+							{ID: "test.bp.one", Version: "1.0.0"},
+							{ID: "test.bp.two", Version: "2.0.0"},
+						}}},
 				}
 				mockClient.EXPECT().InspectBuilder("some/image", false).Return(remoteInfo, nil)
 
@@ -128,7 +135,10 @@ ERROR: failed to inspect image 'some/image': some local error
 					RunImageMirrors:      []string{"first/local-default", "second/local-default"},
 					LocalRunImageMirrors: []string{"first/local", "second/local"},
 					Buildpacks:           buildpacks,
-					Groups:               [][]pack.BuildpackInfo{{buildpacks[0]}, {buildpacks[1]}},
+					Groups: []builder.GroupMetadata{
+						{Buildpacks: []builder.GroupBuildpack{{ID: "test.bp.one", Version: "1.0.0"}}},
+						{Buildpacks: []builder.GroupBuildpack{{ID: "test.bp.two", Version: "2.0.0"}}},
+					},
 				}
 				mockClient.EXPECT().InspectBuilder("some/image", true).Return(localInfo, nil)
 			})

@@ -1,12 +1,8 @@
 package builder
 
-import (
-	"github.com/buildpack/lifecycle"
-)
-
 type Config struct {
 	Buildpacks []BuildpackConfig          `toml:"buildpacks"`
-	Groups     []lifecycle.BuildpackGroup `toml:"groups"`
+	Groups     []GroupMetadata `toml:"groups"`
 	Stack      StackConfig
 }
 

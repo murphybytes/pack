@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/buildpack/lifecycle/image/fakes"
+	"github.com/buildpack/pack/builder"
 	"github.com/fatih/color"
 	"github.com/golang/mock/gomock"
 	"github.com/pkg/errors"
@@ -126,11 +127,10 @@ func testInspectBuilder(t *testing.T, when spec.G, it spec.S) {
 					it("sets the groups", func() {
 						builderInfo, err := client.InspectBuilder("some/builder", useDaemon)
 						h.AssertNil(t, err)
-						h.AssertEq(t, builderInfo.Groups[0], []pack.BuildpackInfo{{
+						h.AssertEq(t, builderInfo.Groups[0].Buildpacks[0], builder.GroupBuildpack{
 							ID:      "test.bp.one",
 							Version: "1.0.0",
-							Latest:  true,
-						}})
+						})
 					})
 				})
 			})
