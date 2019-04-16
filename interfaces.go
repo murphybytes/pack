@@ -15,5 +15,5 @@ type ImageFetcher interface {
 }
 
 type BuildpackFetcher interface {
-	FetchBuildpack(localSearchPath string, uri string) (buildpack.Buildpack, error)
+	FetchBuildpack(uri string) (buildpack.Buildpack, error)
 }

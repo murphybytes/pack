@@ -5,12 +5,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/BurntSushi/toml"
-	"github.com/buildpack/pack/stack"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
+
+	"github.com/BurntSushi/toml"
+	"github.com/buildpack/pack/stack"
 
 	"github.com/buildpack/lifecycle/image"
 	"github.com/pkg/errors"
@@ -49,33 +50,26 @@ func New(img image.Image, name string) (*Builder2, error) {
 	}, nil
 }
 
-func userAndGroupIDs(img image.Image) (int, int, error) {
-	sUID, err := img.Env("CNB_USER_ID")
-	if err != nil {
-		return 0, 0, errors.Wrap(err, "reading builder env variables")
-	} else if sUID == "" {
-		return 0, 0, fmt.Errorf("image '%s' missing required env var 'CNB_USER_ID'", img.Name())
+func (b *Builder2) AddBuildpack(bp buildpack.Buildpack) error {
+	if !bp.SupportsStack(b.stackID) {
+		return fmt.Errorf("buildpack '%s:%s' does not support stack '%s'", bp.ID, bp.Version, b.stackID)
 	}
+	b.buildpacks = append(b.buildpacks, bp)
+	b.metadata.Buildpacks = append(b.metadata.Buildpacks, BuildpackMetadata{ID: bp.ID, Version: bp.Version, Latest: bp.Latest})
+	return nil
+}
 
-	sGID, err := img.Env("CNB_GROUP_ID")
-	if err != nil {
-		return 0, 0, errors.Wrap(err, "reading builder env variables")
-	} else if sGID == "" {
-		return 0, 0, fmt.Errorf("image '%s' missing required env var 'CNB_GROUP_ID'", img.Name())
+func (b *Builder2) SetOrder(order []GroupMetadata) {
+	b.metadata.Groups = order
+}
+
+func (b *Builder2) SetStackInfo(stackConfig StackConfig) {
+	b.metadata.Stack = stack.Metadata{
+		RunImage: stack.RunImageMetadata{
+			Image:   stackConfig.RunImage,
+			Mirrors: stackConfig.RunImageMirrors,
+		},
 	}
-
-	var uid, gid int
-	uid, err = strconv.Atoi(sUID)
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to parse 'CNB_USER_ID', value '%s' should be an integer", sUID)
-	}
-
-	gid, err = strconv.Atoi(sGID)
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to parse 'CNB_GROUP_ID', value '%s' should be an integer", sGID)
-	}
-
-	return uid, gid, nil
 }
 
 func (b *Builder2) Save() error {
@@ -124,6 +118,35 @@ func (b *Builder2) Save() error {
 	return err
 }
 
+func userAndGroupIDs(img image.Image) (int, int, error) {
+	sUID, err := img.Env("CNB_USER_ID")
+	if err != nil {
+		return 0, 0, errors.Wrap(err, "reading builder env variables")
+	} else if sUID == "" {
+		return 0, 0, fmt.Errorf("image '%s' missing required env var 'CNB_USER_ID'", img.Name())
+	}
+
+	sGID, err := img.Env("CNB_GROUP_ID")
+	if err != nil {
+		return 0, 0, errors.Wrap(err, "reading builder env variables")
+	} else if sGID == "" {
+		return 0, 0, fmt.Errorf("image '%s' missing required env var 'CNB_GROUP_ID'", img.Name())
+	}
+
+	var uid, gid int
+	uid, err = strconv.Atoi(sUID)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to parse 'CNB_USER_ID', value '%s' should be an integer", sUID)
+	}
+
+	gid, err = strconv.Atoi(sGID)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to parse 'CNB_GROUP_ID', value '%s' should be an integer", sGID)
+	}
+
+	return uid, gid, nil
+}
+
 func (b *Builder2) orderLayer(dest string) (string, error) {
 	orderTOML := &bytes.Buffer{}
 	err := toml.NewEncoder(orderTOML).Encode(OrderTOML{Groups: b.metadata.Groups})
@@ -142,12 +165,7 @@ func (b *Builder2) orderLayer(dest string) (string, error) {
 
 func (b *Builder2) stackLayer(dest string) (string, error) {
 	stackTOML := &bytes.Buffer{}
-	err := toml.NewEncoder(stackTOML).Encode(StackTOML{
-		Stack: StackTOMLStack{
-			RunImage:        b.metadata.Stack.RunImage.Image,
-			RunImageMirrors: b.metadata.Stack.RunImage.Mirrors,
-		},
-	})
+	err := toml.NewEncoder(stackTOML).Encode(b.metadata.Stack)
 	if err != nil {
 		return "", errors.Wrapf(err, "failed to marshal stack.toml")
 	}
@@ -194,24 +212,3 @@ func (b *Builder2) buildpackLayer(dest string, bp buildpack.Buildpack) (string, 
 	return layerTar, nil
 }
 
-func (b *Builder2) AddBuildpack(bp buildpack.Buildpack) error {
-	if !bp.SupportsStack(b.stackID) {
-		return fmt.Errorf("buildpack '%s:%s' does not support stack '%s'", bp.ID, bp.Version, b.stackID)
-	}
-	b.buildpacks = append(b.buildpacks, bp)
-	b.metadata.Buildpacks = append(b.metadata.Buildpacks, BuildpackMetadata{ID: bp.ID, Version: bp.Version, Latest: bp.Latest})
-	return nil
-}
-
-func (b *Builder2) SetOrder(order []GroupMetadata) {
-	b.metadata.Groups = order
-}
-
-func (b *Builder2) SetStackInfo(stackConfig StackConfig) {
-	b.metadata.Stack = stack.Metadata{
-		RunImage: stack.RunImageMetadata{
-			Image:   stackConfig.RunImage,
-			Mirrors: stackConfig.RunImageMirrors,
-		},
-	}
-}

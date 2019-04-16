@@ -20,7 +20,7 @@ type RebaseOptions struct {
 }
 
 func (c *Client) Rebase(ctx context.Context, opts RebaseOptions) error {
-	appImage, err := c.fetcher.Fetch(ctx, opts.RepoName, !opts.Publish, !opts.SkipPull)
+	appImage, err := c.imageFetcher.Fetch(ctx, opts.RepoName, !opts.Publish, !opts.SkipPull)
 	if err != nil {
 		return err
 	}
@@ -30,7 +30,7 @@ func (c *Client) Rebase(ctx context.Context, opts RebaseOptions) error {
 		return err
 	}
 
-	baseImage, err := c.fetcher.Fetch(ctx, runImageName, !opts.Publish, !opts.SkipPull)
+	baseImage, err := c.imageFetcher.Fetch(ctx, runImageName, !opts.Publish, !opts.SkipPull)
 	if err != nil {
 		return err
 	}

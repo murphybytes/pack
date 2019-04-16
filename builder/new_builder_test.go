@@ -191,6 +191,7 @@ func testBuilder2(t *testing.T, when spec.G, it spec.S) {
 				})
 			})
 
+			//TODO: this test
 			when("base image already has metadata", func() {
 				it.Before(func() {
 					
@@ -268,9 +269,9 @@ func testBuilder2(t *testing.T, when spec.G, it spec.S) {
 
 			it("adds the stack.toml to the image", func() {
 				layerTar := baseImage.FindLayerWithPath("/buildpacks/stack.toml")
-				assertTarFileContents(t, layerTar, "/buildpacks/stack.toml", `[stack]
-  run-image = "some/run"
-  run-image-mirrors = ["some/mirror", "other/mirror"]
+				assertTarFileContents(t, layerTar, "/buildpacks/stack.toml", `[run-image]
+  image = "some/run"
+  mirrors = ["some/mirror", "other/mirror"]
 `)
 			})
 

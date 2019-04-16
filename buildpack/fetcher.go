@@ -40,7 +40,7 @@ func NewFetcher(logger Logger, cacheDir string) *Fetcher {
 	}
 }
 
-func (f *Fetcher) FetchBuildpack(localSearchPath string, uri string) (Buildpack, error) {
+func (f *Fetcher) FetchBuildpack(uri string) (Buildpack, error) {
 	bpURL, err := url.Parse(uri)
 	if err != nil {
 		return Buildpack{}, err
@@ -49,7 +49,7 @@ func (f *Fetcher) FetchBuildpack(localSearchPath string, uri string) (Buildpack,
 	var dir string
 	switch bpURL.Scheme {
 	case "", "file":
-		dir, err = f.handleFile(localSearchPath, bpURL)
+		dir, err = f.handleFile(bpURL)
 	case "http", "https":
 		dir, err = f.handleHTTP(uri)
 	default:
@@ -78,12 +78,8 @@ func readTOML(path string) (buildpackTOML, error) {
 	return data, nil
 }
 
-func (f *Fetcher) handleFile(localSearchPath string, bpURL *url.URL) (string, error) {
+func (f *Fetcher) handleFile(bpURL *url.URL) (string, error) {
 	path := bpURL.Path
-
-	if !bpURL.IsAbs() && !filepath.IsAbs(path) {
-		path = filepath.Join(localSearchPath, path)
-	}
 
 	if filepath.Ext(path) != ".tgz" {
 		return path, nil

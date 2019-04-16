@@ -26,15 +26,6 @@ type OrderTOML struct {
 	Groups []GroupMetadata `toml:"groups"`
 }
 
-type StackTOML struct {
-	Stack StackTOMLStack `toml:"stack"`
-}
-
-type StackTOMLStack struct {
-	RunImage string `toml:"run-image"`
-	RunImageMirrors []string `toml:"run-image-mirrors"`
-}
-
 type GroupBuildpack struct {
 	ID       string `json:"id" toml:"id"`
 	Version  string `json:"version" toml:"version"`

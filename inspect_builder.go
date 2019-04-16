@@ -27,7 +27,7 @@ type BuildpackInfo struct {
 }
 
 func (c *Client) InspectBuilder(name string, daemon bool) (*BuilderInfo, error) {
-	img, err := c.fetcher.Fetch(context.Background(), name, daemon, false)
+	img, err := c.imageFetcher.Fetch(context.Background(), name, daemon, false)
 	if err != nil {
 		if errors.Cause(err) == image.ErrNotFound {
 			return nil, nil

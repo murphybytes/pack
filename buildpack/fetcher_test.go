@@ -57,7 +57,7 @@ func testBuildpackFetcher(t *testing.T, when spec.G, it spec.S) {
 		})
 
 		it("fetches from a relative directory", func() {
-			out, err := subject.FetchBuildpack(".", filepath.Join("testdata", "buildpack"))
+			out, err := subject.FetchBuildpack(filepath.Join("testdata", "buildpack"))
 			h.AssertNil(t, err)
 			h.AssertEq(t, out.ID, "bp.one")
 			h.AssertEq(t, out.Version, "some-buildpack-version")
@@ -69,7 +69,7 @@ func testBuildpackFetcher(t *testing.T, when spec.G, it spec.S) {
 		})
 
 		it("fetches from a relative tgz", func() {
-			out, err := subject.FetchBuildpack(".", filepath.Join("testdata", "buildpack.tgz"))
+			out, err := subject.FetchBuildpack(filepath.Join("testdata", "buildpack.tgz"))
 			h.AssertNil(t, err)
 			h.AssertEq(t, out.ID, "bp.one")
 			h.AssertEq(t, out.Version, "some-buildpack-version")
@@ -84,7 +84,7 @@ func testBuildpackFetcher(t *testing.T, when spec.G, it spec.S) {
 			absPath, err := filepath.Abs(filepath.Join("testdata", "buildpack"))
 			h.AssertNil(t, err)
 
-			out, err := subject.FetchBuildpack(".", absPath)
+			out, err := subject.FetchBuildpack(absPath)
 			h.AssertNil(t, err)
 			h.AssertEq(t, out.ID, "bp.one")
 			h.AssertEq(t, out.Version, "some-buildpack-version")
@@ -99,7 +99,7 @@ func testBuildpackFetcher(t *testing.T, when spec.G, it spec.S) {
 			absPath, err := filepath.Abs(filepath.Join("testdata", "buildpack.tgz"))
 			h.AssertNil(t, err)
 
-			out, err := subject.FetchBuildpack(".", absPath)
+			out, err := subject.FetchBuildpack(absPath)
 			h.AssertNil(t, err)
 			h.AssertEq(t, out.ID, "bp.one")
 			h.AssertEq(t, out.Version, "some-buildpack-version")
@@ -114,7 +114,7 @@ func testBuildpackFetcher(t *testing.T, when spec.G, it spec.S) {
 			absPath, err := filepath.Abs(filepath.Join("testdata", "buildpack"))
 			h.AssertNil(t, err)
 
-			out, err := subject.FetchBuildpack(".", "file://" + absPath)
+			out, err := subject.FetchBuildpack("file://" + absPath)
 			h.AssertNil(t, err)
 			h.AssertEq(t, out.ID, "bp.one")
 			h.AssertEq(t, out.Version, "some-buildpack-version")
@@ -129,7 +129,7 @@ func testBuildpackFetcher(t *testing.T, when spec.G, it spec.S) {
 			absPath, err := filepath.Abs(filepath.Join("testdata", "buildpack.tgz"))
 			h.AssertNil(t, err)
 
-			out, err := subject.FetchBuildpack(".", "file://" + absPath)
+			out, err := subject.FetchBuildpack("file://" + absPath)
 			h.AssertNil(t, err)
 			h.AssertEq(t, out.ID, "bp.one")
 			h.AssertEq(t, out.Version, "some-buildpack-version")
@@ -148,7 +148,7 @@ func testBuildpackFetcher(t *testing.T, when spec.G, it spec.S) {
 			})
 			defer server.Close()
 
-			out, err := subject.FetchBuildpack(".", server.URL() + "/buildpack.tgz")
+			out, err := subject.FetchBuildpack(server.URL() + "/buildpack.tgz")
 			h.AssertNil(t, err)
 			h.AssertEq(t, out.ID, "bp.one")
 			h.AssertEq(t, out.Version, "some-buildpack-version")
