@@ -26,7 +26,31 @@ type Builder2 struct {
 	buildpacks []buildpack.Buildpack
 	metadata   Metadata
 	uid, gid   int
-	stackID    string
+	StackID    string
+}
+
+func NewFromImage(img image.Image) (*Builder2, error) {
+	uid, gid, err := userAndGroupIDs(img)
+	if err != nil {
+		return nil, err
+	}
+	stackID, err := img.Label("io.buildpacks.stack.id")
+	if err != nil {
+		return nil, errors.Wrapf(err, "get label 'io.buildpacks.stack.id' from image '%s'", img.Name())
+	}
+	if stackID == "" {
+		return nil, fmt.Errorf("image '%s' missing 'io.buildpacks.stack.id' label'", img.Name())
+	}
+	return &Builder2{
+		image:   img,
+		uid:     uid,
+		gid:     gid,
+		StackID: stackID,
+	}, nil
+}
+
+func (b *Builder2) {
+
 }
 
 func New(img image.Image, name string) (*Builder2, error) {
@@ -46,13 +70,15 @@ func New(img image.Image, name string) (*Builder2, error) {
 		image:   img,
 		uid:     uid,
 		gid:     gid,
-		stackID: stackID,
+		StackID: stackID,
 	}, nil
 }
 
+// TODO : the things below are really a Builder "Builder" (aka. following the builder pattern to produce a new builder image)
+
 func (b *Builder2) AddBuildpack(bp buildpack.Buildpack) error {
-	if !bp.SupportsStack(b.stackID) {
-		return fmt.Errorf("buildpack '%s:%s' does not support stack '%s'", bp.ID, bp.Version, b.stackID)
+	if !bp.SupportsStack(b.StackID) {
+		return fmt.Errorf("buildpack '%s:%s' does not support stack '%s'", bp.ID, bp.Version, b.StackID)
 	}
 	b.buildpacks = append(b.buildpacks, bp)
 	b.metadata.Buildpacks = append(b.metadata.Buildpacks, BuildpackMetadata{ID: bp.ID, Version: bp.Version, Latest: bp.Latest})
@@ -211,4 +237,3 @@ func (b *Builder2) buildpackLayer(dest string, bp buildpack.Buildpack) (string, 
 
 	return layerTar, nil
 }
-

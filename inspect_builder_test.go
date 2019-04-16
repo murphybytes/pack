@@ -29,21 +29,25 @@ func TestInspectBuilder(t *testing.T) {
 func testInspectBuilder(t *testing.T, when spec.G, it spec.S) {
 	var (
 		client           *pack.Client
-		MockImageFetcher *mocks.MockImageFetcher
+		mockImageFetcher *mocks.MockImageFetcher
+		mockBPFetcher    *mocks.MockBuildpackFetcher
 		mockController   *gomock.Controller
 		builderImage     *fakes.Image
 	)
 
 	it.Before(func() {
 		mockController = gomock.NewController(t)
-		MockImageFetcher = mocks.NewMockImageFetcher(mockController)
+		mockImageFetcher = mocks.NewMockImageFetcher(mockController)
+		mockBPFetcher = mocks.NewMockBuildpackFetcher(mockController)
+
 		client = pack.NewClient(&config.Config{
 			RunImages: []config.RunImage{
 				{Image: "some/run-image", Mirrors: []string{"some/local-mirror"}},
 			},
 		},
 			logging.NewLogger(ioutil.Discard, ioutil.Discard, false, false),
-			MockImageFetcher,
+			mockImageFetcher,
+			mockBPFetcher,
 		)
 		builderImage = fakes.NewImage(t, "some/builder", "", "")
 	})
@@ -57,9 +61,9 @@ func testInspectBuilder(t *testing.T, when spec.G, it spec.S) {
 			when(fmt.Sprintf("daemon is %t", useDaemon), func() {
 				it.Before(func() {
 					if useDaemon {
-						MockImageFetcher.EXPECT().Fetch(gomock.Any(), "some/builder", true, false).Return(builderImage, nil)
+						mockImageFetcher.EXPECT().Fetch(gomock.Any(), "some/builder", true, false).Return(builderImage, nil)
 					} else {
-						MockImageFetcher.EXPECT().Fetch(gomock.Any(), "some/builder", false, false).Return(builderImage, nil)
+						mockImageFetcher.EXPECT().Fetch(gomock.Any(), "some/builder", false, false).Return(builderImage, nil)
 					}
 				})
 
@@ -139,7 +143,7 @@ func testInspectBuilder(t *testing.T, when spec.G, it spec.S) {
 
 	when("fetcher fails to fetch the image", func() {
 		it.Before(func() {
-			MockImageFetcher.EXPECT().Fetch(gomock.Any(), "some/builder", false, false).Return(nil, errors.New("some-error"))
+			mockImageFetcher.EXPECT().Fetch(gomock.Any(), "some/builder", false, false).Return(nil, errors.New("some-error"))
 		})
 
 		it("returns an error", func() {
@@ -152,7 +156,7 @@ func testInspectBuilder(t *testing.T, when spec.G, it spec.S) {
 		it.Before(func() {
 			notFoundImage := fakes.NewImage(t, "", "", "")
 			notFoundImage.Delete()
-			MockImageFetcher.EXPECT().Fetch(gomock.Any(), "some/builder", true, false).Return(nil, errors.Wrap(image.ErrNotFound, "some-error"))
+			mockImageFetcher.EXPECT().Fetch(gomock.Any(), "some/builder", true, false).Return(nil, errors.Wrap(image.ErrNotFound, "some-error"))
 		})
 
 		it("return nil metadata", func() {

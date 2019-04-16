@@ -30,7 +30,10 @@ func (c *Client) CreateBuilder(ctx context.Context, opts CreateBuilderOptions) e
 	if err != nil {
 		return err
 	}
-	//TODO: check stack id matches config
+
+	if builderImage.StackID != opts.BuilderConfig.Stack.ID {
+		return fmt.Errorf("stack '%s' from builder config is incompatible with stack '%s' from build image", opts.BuilderConfig.Stack.ID, builderImage.StackID)
+	}
 
 	for _, b := range opts.BuilderConfig.Buildpacks {
 		fetchedBuildpack, err := c.buildpackFetcher.FetchBuildpack(b.URI)

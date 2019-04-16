@@ -17,11 +17,12 @@ type Client struct {
 	buildpackFetcher BuildpackFetcher
 }
 
-func NewClient(config *config.Config, logger *logging.Logger, fetcher ImageFetcher) *Client {
+func NewClient(config *config.Config, logger *logging.Logger, imageFetcher ImageFetcher, buildpackFetcher BuildpackFetcher) *Client {
 	return &Client{
-		config:       config,
-		logger:       logger,
-		imageFetcher: fetcher,
+		config:           config,
+		logger:           logger,
+		imageFetcher:     imageFetcher,
+		buildpackFetcher: buildpackFetcher,
 	}
 }
 
