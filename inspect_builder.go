@@ -2,7 +2,6 @@ package pack
 
 import (
 	"context"
-	"github.com/buildpack/pack/style"
 
 	"github.com/pkg/errors"
 
@@ -16,7 +15,7 @@ type BuilderInfo struct {
 	RunImage             string
 	RunImageMirrors      []string
 	LocalRunImageMirrors []string
-	Buildpacks           []BuildpackInfo
+	Buildpacks           []builder.BuildpackMetadata
 	Groups               []builder.GroupMetadata
 }
 
@@ -35,42 +34,24 @@ func (c *Client) InspectBuilder(name string, daemon bool) (*BuilderInfo, error) 
 		return nil, err
 	}
 
-	bldr := builder.NewBuilder(img, c.config)
-
-	stackID, err := bldr.GetStack()
+	bldr, err := builder.GetBuilder(img)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get stack ID for builder image %s", style.Symbol(name))
+		return nil, errors.Wrapf(err, "getting builder '%s'", name)
 	}
 
-	metadata, err := bldr.GetMetadata()
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get metadata for builder image %s", style.Symbol(name))
-	}
+	runImageConfig := c.config.GetRunImage(bldr.GetStackInfo().RunImage.Image)
 
-	localMirrors, err := bldr.GetLocalRunImageMirrors()
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get local run image mirrors for builder image %s", style.Symbol(name))
-	}
-
-	var buildpacks []BuildpackInfo
-	for _, bp := range metadata.Buildpacks {
-		buildpacks = append(buildpacks, buildpackMetadataToInfo(bp))
+	var localMirrors []string
+	if runImageConfig != nil {
+		localMirrors = runImageConfig.Mirrors
 	}
 
 	return &BuilderInfo{
-		Stack:                stackID,
-		RunImage:             metadata.Stack.RunImage.Image,
-		RunImageMirrors:      metadata.Stack.RunImage.Mirrors,
+		Stack:                bldr.StackID,
+		RunImage:             bldr.GetStackInfo().RunImage.Image,
+		RunImageMirrors:      bldr.GetStackInfo().RunImage.Mirrors,
 		LocalRunImageMirrors: localMirrors,
-		Buildpacks:           buildpacks,
-		Groups:               metadata.Groups,
+		Buildpacks:           bldr.GetBuildpacks(),
+		Groups:               bldr.GetOrder(),
 	}, nil
-}
-
-func buildpackMetadataToInfo(bp builder.BuildpackMetadata) BuildpackInfo {
-	return BuildpackInfo{
-		ID:      bp.ID,
-		Version: bp.Version,
-		Latest:  bp.Latest,
-	}
 }

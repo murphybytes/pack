@@ -6,12 +6,13 @@ import (
 	"testing"
 
 	"github.com/buildpack/lifecycle/image/fakes"
-	"github.com/buildpack/pack/builder"
 	"github.com/fatih/color"
 	"github.com/golang/mock/gomock"
 	"github.com/pkg/errors"
 	"github.com/sclevine/spec"
 	"github.com/sclevine/spec/report"
+
+	"github.com/buildpack/pack/builder"
 
 	"github.com/buildpack/pack"
 	"github.com/buildpack/pack/config"
@@ -50,6 +51,9 @@ func testInspectBuilder(t *testing.T, when spec.G, it spec.S) {
 			mockBPFetcher,
 		)
 		builderImage = fakes.NewImage(t, "some/builder", "", "")
+		h.AssertNil(t, builderImage.SetLabel("io.buildpacks.stack.id", "test.stack.id"))
+		h.AssertNil(t, builderImage.SetEnv("CNB_USER_ID", "1234"))
+		h.AssertNil(t, builderImage.SetEnv("CNB_GROUP_ID", "4321"))
 	})
 
 	it.After(func() {
@@ -121,7 +125,7 @@ func testInspectBuilder(t *testing.T, when spec.G, it spec.S) {
 					it("sets the buildpacks", func() {
 						builderInfo, err := client.InspectBuilder("some/builder", useDaemon)
 						h.AssertNil(t, err)
-						h.AssertEq(t, builderInfo.Buildpacks[0], pack.BuildpackInfo{
+						h.AssertEq(t, builderInfo.Buildpacks[0], builder.BuildpackMetadata{
 							ID:      "test.bp.one",
 							Version: "1.0.0",
 							Latest:  true,

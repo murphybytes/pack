@@ -3,17 +3,19 @@ package pack_test
 import (
 	"bytes"
 	"context"
+	"path/filepath"
+	"runtime"
+	"testing"
+
 	"github.com/buildpack/lifecycle/image/fakes"
+	"github.com/golang/mock/gomock"
+
 	"github.com/buildpack/pack"
 	"github.com/buildpack/pack/builder"
 	"github.com/buildpack/pack/buildpack"
 	"github.com/buildpack/pack/config"
 	"github.com/buildpack/pack/logging"
 	"github.com/buildpack/pack/mocks"
-	"github.com/golang/mock/gomock"
-	"path/filepath"
-	"runtime"
-	"testing"
 
 	"github.com/fatih/color"
 	"github.com/sclevine/spec"
@@ -129,17 +131,29 @@ func testCreateBuilder(t *testing.T, when spec.G, it spec.S) {
 			})
 		})
 
-		it.Focus("should create a new builder image", func() {
+		it("should create a new builder image", func() {
 			err := subject.CreateBuilder(context.TODO(), opts)
 			h.AssertNil(t, err)
 
-			builderImage, err := builder.NewFromImage(fakeBuildImage)
+			builderImage, err := builder.GetBuilder(fakeBuildImage)
 			h.AssertNil(t, err)
 
-			// TODO : test for buildpacks, order, and stack info (and maybe uid/gid)
+			h.AssertEq(t, builderImage.Name, "some/builder")
+			h.AssertEq(t, builderImage.UID, 1234)
+			h.AssertEq(t, builderImage.GID, 4321)
 			h.AssertEq(t, builderImage.StackID, "some.stack.id")
-			h.AssertEq(t, builderImage.Buildpacks, "")
-			h.AssertEq(t, builderImage.Groups, "")
+			h.AssertEq(t, builderImage.GetBuildpacks(), []builder.BuildpackMetadata{{
+				ID:      "bp.one",
+				Version: "1.2.3",
+				Latest:  true,
+			}})
+			h.AssertEq(t, builderImage.GetOrder(), []builder.GroupMetadata{{
+				Buildpacks: []builder.GroupBuildpack{{
+					ID:       "bp.one",
+					Version:  "1.2.3",
+					Optional: false,
+				}},
+			}})
 		})
 	})
 }

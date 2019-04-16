@@ -673,6 +673,8 @@ func testAcceptance(t *testing.T, when spec.G, it spec.S) {
 			builderImageName := h.CreateImageOnRemote(t, dockerCli, registryConfig, "some/builder",
 				fmt.Sprintf(`
 										FROM scratch
+										ENV CNB_USER_ID=1234
+										ENV CNB_GROUP_ID=4321
 										LABEL %s="{\"stack\":{\"runImage\":{\"image\":\"some/run1\",\"mirrors\":[\"gcr.io/some/run1\"]}},\"buildpacks\":[{\"id\":\"test.bp.one\",\"version\":\"0.0.1\",\"latest\":false},{\"id\":\"test.bp.two\",\"version\":\"0.0.2\",\"latest\":true}],\"groups\":[{\"buildpacks\":[{\"id\":\"test.bp.one\",\"version\":\"0.0.1\"},{\"id\":\"test.bp.two\",\"version\":\"0.0.2\"}]},{\"buildpacks\":[{\"id\":\"test.bp.one\",\"version\":\"0.0.1\"}]}]}"
 										LABEL io.buildpacks.stack.id=some.test.stack
 									`, "io.buildpacks.builder.metadata"))
@@ -680,6 +682,8 @@ func testAcceptance(t *testing.T, when spec.G, it spec.S) {
 			h.CreateImageOnLocal(t, dockerCli, builderImageName,
 				fmt.Sprintf(`
 										FROM scratch
+										ENV CNB_USER_ID=1234
+										ENV CNB_GROUP_ID=4321
 										LABEL %s="{\"stack\":{\"runImage\":{\"image\":\"some/run1\",\"mirrors\":[\"gcr.io/some/run2\"]}},\"buildpacks\":[{\"id\":\"test.bp.one\",\"version\":\"0.0.1\",\"latest\":false},{\"id\":\"test.bp.two\",\"version\":\"0.0.2\",\"latest\":true}],\"groups\":[{\"buildpacks\":[{\"id\":\"test.bp.one\",\"version\":\"0.0.1\"},{\"id\":\"test.bp.two\",\"version\":\"0.0.2\"}]},{\"buildpacks\":[{\"id\":\"test.bp.one\",\"version\":\"0.0.1\"}]}]}"
 										LABEL io.buildpacks.stack.id=some.test.stack
 									`, "io.buildpacks.builder.metadata"))

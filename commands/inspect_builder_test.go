@@ -111,7 +111,7 @@ ERROR: failed to inspect image 'some/image': some local error
 
 		when("is successful", func() {
 			it.Before(func() {
-				buildpacks := []pack.BuildpackInfo{
+				buildpacks := []builder.BuildpackMetadata{
 					{ID: "test.bp.one", Version: "1.0.0", Latest: true},
 					{ID: "test.bp.two", Version: "2.0.0", Latest: false},
 				}
