@@ -69,6 +69,8 @@ func testBuildpackFetcher(t *testing.T, when spec.G, it spec.S) {
 			h.AssertEq(t, out.ID, "bp.one")
 			h.AssertEq(t, out.Version, "some-buildpack-version")
 			h.AssertEq(t, out.Latest, true)
+			h.AssertEq(t, out.Stacks[0].ID, "some.stack.id")
+			h.AssertEq(t, out.Stacks[1].ID, "other.stack.id")
 			h.AssertNotEq(t, out.Dir, "")
 			h.AssertDirContainsFileWithContents(t, out.Dir, "bin/detect", "I come from a directory\n")
 			h.AssertDirContainsFileWithContents(t, out.Dir, "bin/build", "I come from a directory\n")

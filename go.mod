@@ -30,3 +30,5 @@ require (
 	golang.org/x/sys v0.0.0-20190306220723-b294cbcfc56d // indirect
 	google.golang.org/genproto v0.0.0-20190306222511-6e86cb5d2f12 // indirect
 )
+
+replace github.com/buildpack/lifecycle v0.1.1-0.20190409153558-9bfc59c56c74 => ../lifecycle
