@@ -191,13 +191,42 @@ func testBuilder2(t *testing.T, when spec.G, it spec.S) {
 				})
 			})
 
-			//TODO: this test
 			when("base image already has metadata", func() {
 				it.Before(func() {
-					
-				})
-				it("appends the buildpack to the metadata", func() {
+					h.AssertNil(t, baseImage.SetLabel("io.buildpacks.builder.metadata", `{"buildpacks": [{"id": "prev.id"}], "groups": [{"buildpacks": [{"id": "prev.id"}]}], "stack": {"runImage": {"image": "prev/run", "mirrors": ["prev/mirror"]}}}`))
 
+					var err error
+					subject, err = builder.New(baseImage, "some/builder")
+					h.AssertNil(t, err)
+
+					h.AssertNil(t, subject.AddBuildpack(buildpack.Buildpack{
+						ID:      "some-buildpack-id",
+						Version: "some-buildpack-version",
+						Dir:     filepath.Join("testdata", "buildpack"),
+						Stacks:  []buildpack.Stack{{ID: "some.stack.id"}},
+					}))
+					h.AssertNil(t, subject.Save())
+					h.AssertEq(t, baseImage.IsSaved(), true)
+				})
+
+				it("appends the buildpack to the metadata", func() {
+					label, err := baseImage.Label("io.buildpacks.builder.metadata")
+					h.AssertNil(t, err)
+
+					var metadata builder.Metadata
+					h.AssertNil(t, json.Unmarshal([]byte(label), &metadata))
+					h.AssertEq(t, len(metadata.Buildpacks), 2)
+
+					// keeps original metadata
+					h.AssertEq(t, metadata.Buildpacks[0].ID, "prev.id")
+					h.AssertEq(t, metadata.Groups[0].Buildpacks[0].ID, "prev.id")
+					h.AssertEq(t, metadata.Stack.RunImage.Image, "prev/run")
+					h.AssertEq(t, metadata.Stack.RunImage.Mirrors[0], "prev/mirror")
+
+					// adds new buildpack
+					h.AssertEq(t, metadata.Buildpacks[1].ID, "some-buildpack-id")
+					h.AssertEq(t, metadata.Buildpacks[1].Version, "some-buildpack-version")
+					h.AssertEq(t, metadata.Buildpacks[1].Latest, false)
 				})
 			})
 		})

@@ -80,11 +80,14 @@ func (b *Builder) GetStackInfo() stack.Metadata {
 	return b.metadata.Stack
 }
 
+// TODO : the things below are really a Builder "Builder" (aka. following the builder pattern to produce a new builder image)
+// TODO : Save becomes Build() and it returns a builder image
 func New(img image.Image, name string) (*Builder, error) {
 	uid, gid, err := userAndGroupIDs(img)
 	if err != nil {
 		return nil, err
 	}
+
 	stackID, err := img.Label("io.buildpacks.stack.id")
 	if err != nil {
 		return nil, errors.Wrapf(err, "get label 'io.buildpacks.stack.id' from image '%s'", img.Name())
@@ -92,20 +95,28 @@ func New(img image.Image, name string) (*Builder, error) {
 	if stackID == "" {
 		return nil, fmt.Errorf("image '%s' missing 'io.buildpacks.stack.id' label'", img.Name())
 	}
+
+	label, err := img.Label(MetadataLabel)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get metadata label from image %s", style.Symbol(img.Name()))
+	} else if label == "" {
+		label = "{}"
+	}
+
+	var metadata Metadata
+	if err := json.Unmarshal([]byte(label), &metadata); err != nil {
+		return nil, errors.Wrapf(err, "failed to parse metadata for builder %s", style.Symbol(img.Name()))
+	}
+
 	img.Rename(name)
 	return &Builder{
-		image:   img,
-		UID:     uid,
-		GID:     gid,
-		StackID: stackID,
+		image:    img,
+		UID:      uid,
+		GID:      gid,
+		StackID:  stackID,
+		metadata: metadata,
 	}, nil
 }
-
-// TODO : the things below are really a Builder "Builder" (aka. following the builder pattern to produce a new builder image)
-
-// fucn (b ...) SetBaseImage() {
-//	validate uid gid
-// }
 
 func (b *Builder) AddBuildpack(bp buildpack.Buildpack) error {
 	if !bp.SupportsStack(b.StackID) {
@@ -128,8 +139,6 @@ func (b *Builder) SetStackInfo(stackConfig StackConfig) {
 		},
 	}
 }
-
-// Save -> builderThing.build() -> Builder obj
 
 func (b *Builder) Save() error {
 	tmpDir, err := ioutil.TempDir("", "create-builder-scratch")
