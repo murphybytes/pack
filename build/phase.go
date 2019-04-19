@@ -32,7 +32,7 @@ type Phase struct {
 
 func (l *Lifecycle) NewPhase(name string, ops ...func(*Phase) (*Phase, error)) (*Phase, error) {
 	ctrConf := &dcontainer.Config{
-		Image:  l.BuilderImage,
+		Image:  l.Builder.Name(),
 		Labels: map[string]string{"author": "pack"},
 	}
 	hostConf := &dcontainer.HostConfig{
@@ -48,8 +48,8 @@ func (l *Lifecycle) NewPhase(name string, ops ...func(*Phase) (*Phase, error)) (
 		name:     name,
 		docker:   l.Docker,
 		logger:   l.Logger,
-		uid:      l.uid,
-		gid:      l.gid,
+		uid:      l.Builder.UID,
+		gid:      l.Builder.GID,
 		appDir:   l.appDir,
 		appOnce:  l.appOnce,
 	}

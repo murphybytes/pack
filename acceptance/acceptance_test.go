@@ -605,7 +605,7 @@ func testAcceptance(t *testing.T, when spec.G, it spec.S) {
 
 				h.CreateImageOnLocal(t, dockerCli, builderName, fmt.Sprintf(`
 								FROM %s
-								LABEL io.buildpacks.builder.metadata="{\"stack\":{\"runImage\": {\"image\": \"%s\"}}}"
+								LABEL io.buildpacks.builder.metadata="{\"buildpacks\": [{\"id\": \"simple/layers\", \"version\": \"simple-layers-version\"}], \"groups\": [{\"buildpacks\": [{\"id\": \"simple/layers\", \"version\": \"simple-layers-version\"}]}], \"stack\":{\"runImage\": {\"image\": \"%s\"}}}"
 								USER root
 								RUN echo "[run-image]\n  image=\"%s\"" > /buildpacks/stack.toml
 								USER pack

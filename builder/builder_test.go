@@ -36,8 +36,8 @@ func testBuilder(t *testing.T, when spec.G, it spec.S) {
 		baseImage = fakes.NewImage(t, "base/image", "", "")
 	})
 
-	when("#New", func() {
-		when("the base image is not valid", func() {
+	when("the base image is not valid", func() {
+		when("#New", func() {
 			when("missing CNB_USER_ID", func() {
 				it("returns an error", func() {
 					_, err := builder.New(baseImage, "some/builder")
@@ -313,6 +313,23 @@ func testBuilder(t *testing.T, when spec.G, it spec.S) {
 				h.AssertEq(t, metadata.Stack.RunImage.Image, "some/run")
 				h.AssertEq(t, metadata.Stack.RunImage.Mirrors[0], "some/mirror")
 				h.AssertEq(t, metadata.Stack.RunImage.Mirrors[1], "other/mirror")
+			})
+		})
+
+		when("#SetEnv", func() {
+			it.Before(func() {
+				subject.SetEnv(map[string]string{
+					"SOME_KEY":  "some-val",
+					"OTHER_KEY": "other-val",
+				})
+				h.AssertNil(t, subject.Save())
+				h.AssertEq(t, baseImage.IsSaved(), true)
+			})
+
+			it("adds the env vars as files to the image", func() {
+				layerTar := baseImage.FindLayerWithPath("/platform/env")
+				assertTarFileContents(t, layerTar, "/platform/env/SOME_KEY", `some-val`)
+				assertTarFileContents(t, layerTar, "/platform/env/OTHER_KEY", `other-val`)
 			})
 		})
 	})

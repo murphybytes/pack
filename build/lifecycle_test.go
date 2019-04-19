@@ -20,6 +20,7 @@ import (
 	"github.com/sclevine/spec"
 	"github.com/sclevine/spec/report"
 
+	"github.com/buildpack/pack/buildpack"
 	"github.com/buildpack/pack/archive"
 	"github.com/buildpack/pack/build"
 	"github.com/buildpack/pack/logging"
@@ -52,16 +53,26 @@ func TestLifecycle(t *testing.T) {
 func testLifecycle(t *testing.T, when spec.G, it spec.S) {
 	when("Phase", func() {
 		var (
+			tmpDir         string
+			bpFetcher      *buildpack.Fetcher
 			lifecycle      *build.Lifecycle
 			outBuf, errBuf bytes.Buffer
 			logger         *logging.Logger
 		)
 
 		it.Before(func() {
+			var err error
+
 			logger = logging.NewLogger(&outBuf, &errBuf, true, false)
+
+			tmpDir, err = ioutil.TempDir("", "", )
+			h.AssertNil(t, err)
+
+			bpFetcher = buildpack.NewFetcher(logger, tmpDir)
 		})
 
 		it.After(func() {
+			h.AssertNil(t, os.RemoveAll(tmpDir))
 			h.AssertNil(t, lifecycle.Cleanup())
 		})
 
@@ -77,6 +88,7 @@ func testLifecycle(t *testing.T, when spec.G, it spec.S) {
 							"some-key":  "some-val",
 							"other-key": "other-val",
 						},
+						BPFetcher: bpFetcher,
 					},
 				)
 				h.AssertNil(t, err)
@@ -146,14 +158,14 @@ func testLifecycle(t *testing.T, when spec.G, it spec.S) {
 					h.AssertContains(t, outBuf.String(), "failed to read file")
 				})
 
-				it("preserves original order.toml", func() {
+				it("preserves original order", func() {
 					phase, err := lifecycle.NewPhase(
 						"phase",
 						build.WithArgs("read", "/buildpacks/order.toml"),
 					)
 					h.AssertNil(t, err)
 					assertRunSucceeds(t, phase, &outBuf, &errBuf)
-					h.AssertContains(t, outBuf.String(), "[phase] file contents: original-order-toml")
+					h.AssertContains(t, outBuf.String(), `[phase]     id = "orig.buildpack.id"`)
 				})
 
 				when("#WithArgs", func() {
@@ -203,7 +215,7 @@ func testLifecycle(t *testing.T, when spec.G, it spec.S) {
 			})
 		})
 
-		when("there are user provided custom buildpacks", func() {
+		when("there are user provided buildpacks", func() {
 			it.Before(func() {
 				if runtime.GOOS == "windows" {
 					t.Skip("directory buildpacks are not implemented on windows")
@@ -221,6 +233,7 @@ func testLifecycle(t *testing.T, when spec.G, it spec.S) {
 							"some-key":  "some-val",
 							"other-key": "other-val",
 						},
+						BPFetcher: bpFetcher,
 					},
 				)
 				h.AssertNil(t, err)
@@ -253,46 +266,6 @@ func testLifecycle(t *testing.T, when spec.G, it spec.S) {
 					`
    [[groups.buildpacks]]
      id = "just/buildpack.id"
-     version = "1.2.3"
-`)
-			})
-		})
-		when("there are user provided buildpack names", func() {
-			it.Before(func() {
-				var err error
-				lifecycle, err = build.NewLifecycle(
-					build.LifecycleConfig{
-						BuilderImage: repoName,
-						Logger:       logger,
-						Buildpacks: []string{
-							"some.buildpack.id@some-version",
-							"just.buildpack.id@1.2.3",
-						},
-						Env: map[string]string{
-							"some-key":  "some-val",
-							"other-key": "other-val",
-						},
-					},
-				)
-				h.AssertNil(t, err)
-			})
-
-			it("runs the phase with custom order.toml available", func() {
-				phase, err := lifecycle.NewPhase("phase", build.WithArgs("read", "/buildpacks/order.toml"))
-				h.AssertNil(t, err)
-				assertRunSucceeds(t, phase, &outBuf, &errBuf)
-				h.AssertContains(t, outBuf.String(), "[phase] read test")
-				assertRunSucceeds(t, phase, &outBuf, &errBuf)
-				h.AssertContains(t, strings.Replace(outBuf.String(), "[phase]", "", -1),
-					`
-   [[groups.buildpacks]]
-     id = "some.buildpack.id"
-     version = "some-version"
-`)
-				h.AssertContains(t, strings.Replace(outBuf.String(), "[phase]", "", -1),
-					`
-   [[groups.buildpacks]]
-     id = "just.buildpack.id"
      version = "1.2.3"
 `)
 			})
@@ -351,7 +324,7 @@ func testLifecycle(t *testing.T, when spec.G, it spec.S) {
 			found := false
 			for _, image := range images {
 				for _, tag := range image.RepoTags {
-					if strings.Contains(tag, subject.BuilderImage) {
+					if strings.Contains(tag, subject.Builder.Name()) {
 						found = true
 						break
 					}

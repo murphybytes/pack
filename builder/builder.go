@@ -9,28 +9,30 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/BurntSushi/toml"
-
-	"github.com/buildpack/pack/style"
-
-	"github.com/buildpack/pack/stack"
-
 	"github.com/buildpack/lifecycle/image"
 	"github.com/pkg/errors"
 
 	"github.com/buildpack/pack/archive"
-
 	"github.com/buildpack/pack/buildpack"
+	"github.com/buildpack/pack/stack"
+	"github.com/buildpack/pack/style"
+)
+
+const (
+	buildpacksDir = "/buildpacks"
+	platformDir   = "/platform"
 )
 
 type Builder struct {
 	image      image.Image
 	buildpacks []buildpack.Buildpack
 	metadata   Metadata
+	env        map[string]string
 	UID, GID   int
 	StackID    string
-	Name       string
 }
 
 func GetBuilder(img image.Image) (*Builder, error) {
@@ -61,7 +63,6 @@ func GetBuilder(img image.Image) (*Builder, error) {
 	return &Builder{
 		image:    img,
 		metadata: metadata,
-		Name:     img.Name(),
 		UID:      uid,
 		GID:      gid,
 		StackID:  stackID,
@@ -72,8 +73,27 @@ func (b *Builder) GetBuildpacks() []BuildpackMetadata {
 	return b.metadata.Buildpacks
 }
 
+func (b *Builder) GetBuildpack(id string, version string) (BuildpackMetadata, bool) {
+	for _, bp := range b.metadata.Buildpacks {
+		if version == "latest" {
+			if bp.ID == id && bp.Latest == true {
+				return bp, true
+			}
+		} else {
+			if bp.ID == id && bp.Version == version {
+				return bp, true
+			}
+		}
+	}
+	return BuildpackMetadata{}, false
+}
+
 func (b *Builder) GetOrder() []GroupMetadata {
 	return b.metadata.Groups
+}
+
+func (b *Builder) Name() string {
+	return b.image.Name()
 }
 
 func (b *Builder) GetStackInfo() stack.Metadata {
@@ -113,6 +133,7 @@ func New(img image.Image, name string) (*Builder, error) {
 		GID:      gid,
 		StackID:  stackID,
 		metadata: metadata,
+		env:      map[string]string{},
 	}, nil
 }
 
@@ -123,6 +144,10 @@ func (b *Builder) AddBuildpack(bp buildpack.Buildpack) error {
 	b.buildpacks = append(b.buildpacks, bp)
 	b.metadata.Buildpacks = append(b.metadata.Buildpacks, BuildpackMetadata{ID: bp.ID, Version: bp.Version, Latest: bp.Latest})
 	return nil
+}
+
+func (b *Builder) SetEnv(env map[string]string) {
+	b.env = env
 }
 
 func (b *Builder) SetOrder(order []GroupMetadata) {
@@ -144,6 +169,14 @@ func (b *Builder) Save() error {
 		return err
 	}
 	defer os.RemoveAll(tmpDir)
+
+	envTar, err := b.envLayer(tmpDir, b.env)
+	if err != nil {
+		return err
+	}
+	if err := b.image.AddLayer(envTar); err != nil {
+		return errors.Wrap(err, "adding env layer")
+	}
 
 	for _, bp := range b.buildpacks {
 		layerTar, err := b.buildpackLayer(tmpDir, bp)
@@ -221,7 +254,7 @@ func (b *Builder) orderLayer(dest string) (string, error) {
 	}
 
 	layerTar := filepath.Join(dest, "order.tar")
-	err = archive.CreateSingleFileTar(layerTar, "/buildpacks/order.toml", orderTOML.String())
+	err = archive.CreateSingleFileTar(layerTar, buildpacksDir+"/order.toml", orderTOML.String())
 	if err != nil {
 		return "", errors.Wrapf(err, "failed to create order.toml layer tar")
 	}
@@ -237,7 +270,7 @@ func (b *Builder) stackLayer(dest string) (string, error) {
 	}
 
 	layerTar := filepath.Join(dest, "stack.tar")
-	err = archive.CreateSingleFileTar(layerTar, "/buildpacks/stack.toml", stackTOML.String())
+	err = archive.CreateSingleFileTar(layerTar, buildpacksDir+"/stack.toml", stackTOML.String())
 	if err != nil {
 		return "", errors.Wrapf(err, "failed to create stack.toml layer tar")
 	}
@@ -257,14 +290,14 @@ func (b *Builder) buildpackLayer(dest string, bp buildpack.Buildpack) (string, e
 	tw := tar.NewWriter(fh)
 	defer tw.Close()
 
-	if err := archive.WriteDirToTar(tw, bp.Dir, fmt.Sprintf("/buildpacks/%s/%s", bp.EscapedID(), bp.Version), b.UID, b.GID); err != nil {
+	if err := archive.WriteDirToTar(tw, bp.Dir, fmt.Sprintf("%s/%s/%s", buildpacksDir, bp.EscapedID(), bp.Version), b.UID, b.GID); err != nil {
 		return "", errors.Wrapf(err, "creating layer tar for buildpack '%s:%s'", bp.ID, bp.Version)
 	}
 
 	if bp.Latest {
 		err := tw.WriteHeader(&tar.Header{
-			Name:     fmt.Sprintf("/buildpacks/%s/%s", bp.EscapedID(), "latest"),
-			Linkname: fmt.Sprintf("/buildpacks/%s/%s", bp.EscapedID(), bp.Version),
+			Name:     fmt.Sprintf("%s/%s/%s", buildpacksDir, bp.EscapedID(), "latest"),
+			Linkname: fmt.Sprintf("%s/%s/%s", buildpacksDir, bp.EscapedID(), bp.Version),
 			Typeflag: tar.TypeSymlink,
 			Mode:     0666,
 			Uid:      b.UID,
@@ -276,4 +309,36 @@ func (b *Builder) buildpackLayer(dest string, bp buildpack.Buildpack) (string, e
 	}
 
 	return layerTar, nil
+}
+
+func (b *Builder) envLayer(dest string, env map[string]string) (string, error) {
+	fh, err := os.Create(filepath.Join(dest, "env.tar"))
+	if err != nil {
+		return "", err
+	}
+	defer fh.Close()
+
+	tw := tar.NewWriter(fh)
+	defer tw.Close()
+
+	now := time.Now()
+
+	for k, v := range env {
+		if err := tw.WriteHeader(&tar.Header{Name: platformDir + "/env/" + k, Size: int64(len(v)), Mode: 0444, ModTime: now}); err != nil {
+			return "", err
+		}
+		if _, err := tw.Write([]byte(v)); err != nil {
+			return "", err
+		}
+	}
+
+	if err := tw.WriteHeader(&tar.Header{Typeflag: tar.TypeDir, Name: platformDir + "/env", Mode: 0555, ModTime: now}); err != nil {
+		return "", err
+	}
+
+	if err := tw.WriteHeader(&tar.Header{Typeflag: tar.TypeDir, Name: platformDir, Mode: 0555, ModTime: now}); err != nil {
+		return "", err
+	}
+
+	return fh.Name(), nil
 }

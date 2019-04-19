@@ -16,6 +16,7 @@ import (
 	"github.com/buildpack/pack/app"
 	"github.com/buildpack/pack/build"
 	"github.com/buildpack/pack/builder"
+	"github.com/buildpack/pack/buildpack"
 	"github.com/buildpack/pack/cache"
 	"github.com/buildpack/pack/config"
 	"github.com/buildpack/pack/image"
@@ -206,6 +207,7 @@ func (bf *BuildFactory) BuildConfigFromFlags(ctx context.Context, f *BuildFlags)
 		Buildpacks:   f.Buildpacks,
 		Env:          env,
 		AppDir:       appDir,
+		BPFetcher:    buildpack.NewFetcher(b.Logger, b.Config.Path()),
 	}
 
 	return b, nil
