@@ -266,14 +266,14 @@ func (b *BuildConfig) Run(ctx context.Context) (*app.Image, error) {
 	defer lifecycle.Cleanup()
 
 	b.Logger.Verbose(style.Step("DETECTING"))
-	if err := b.detect(ctx, lifecycle); err != nil {
+	if err := lifecycle.Detect(ctx); err != nil {
 		return nil, err
 	}
 
 	b.Logger.Verbose(style.Step("RESTORING"))
 	if b.ClearCache {
 		b.Logger.Verbose("Skipping 'restore' due to clearing cache")
-	} else if err := b.restore(ctx, lifecycle); err != nil {
+	} else if err := lifecycle.Restore(ctx, b.Cache.Image()); err != nil {
 		return nil, err
 	}
 
@@ -281,82 +281,29 @@ func (b *BuildConfig) Run(ctx context.Context) (*app.Image, error) {
 	if b.ClearCache {
 		b.Logger.Verbose("Skipping 'analyze' due to clearing cache")
 	} else {
-		if err := b.analyze(ctx, lifecycle); err != nil {
+		if err := lifecycle.Analyze(ctx, b.RepoName, b.Publish); err != nil {
 			return nil, err
 		}
 	}
 
 	b.Logger.Verbose(style.Step("BUILDING"))
-	if err := b.build(ctx, lifecycle); err != nil {
+	if err := lifecycle.Build(ctx); err != nil {
 		return nil, err
 	}
 
 	b.Logger.Verbose(style.Step("EXPORTING"))
-	if err := b.export(ctx, lifecycle); err != nil {
+	if err := lifecycle.Export(ctx, b.RepoName, b.RunImage, b.Publish); err != nil {
 		return nil, err
 	}
 
 	b.Logger.Verbose(style.Step("CACHING"))
-	if err := b.cache(ctx, lifecycle); err != nil {
+	if err := lifecycle.Cache(ctx, b.Cache.Image()); err != nil {
 		return nil, err
 	}
 
 	return &app.Image{RepoName: b.RepoName, Logger: b.Logger}, nil
 }
 
-func (b *BuildConfig) detect(ctx context.Context, lifecycle *build.Lifecycle) error {
-	detect, err := lifecycle.NewDetect()
-	if err != nil {
-		return err
-	}
-	defer detect.Cleanup()
-	return detect.Run(ctx)
-}
-
-func (b *BuildConfig) restore(ctx context.Context, lifecycle *build.Lifecycle) error {
-	restore, err := lifecycle.NewRestore(b.Cache.Image())
-	if err != nil {
-		return err
-	}
-	defer restore.Cleanup()
-	return restore.Run(ctx)
-}
-
-func (b *BuildConfig) analyze(ctx context.Context, lifecycle *build.Lifecycle) error {
-	analyze, err := lifecycle.NewAnalyze(b.RepoName, b.Publish)
-	if err != nil {
-		return err
-	}
-	defer analyze.Cleanup()
-	return analyze.Run(ctx)
-}
-
-func (b *BuildConfig) build(ctx context.Context, lifecycle *build.Lifecycle) error {
-	build, err := lifecycle.NewBuild()
-	if err != nil {
-		return err
-	}
-	defer build.Cleanup()
-	return build.Run(ctx)
-}
-
-func (b *BuildConfig) export(ctx context.Context, lifecycle *build.Lifecycle) error {
-	export, err := lifecycle.NewExport(b.RepoName, b.RunImage, b.Publish)
-	if err != nil {
-		return err
-	}
-	defer export.Cleanup()
-	return export.Run(ctx)
-}
-
-func (b *BuildConfig) cache(ctx context.Context, lifecycle *build.Lifecycle) error {
-	cache, err := lifecycle.NewCache(b.Cache.Image())
-	if err != nil {
-		return err
-	}
-	defer cache.Cleanup()
-	return cache.Run(ctx)
-}
 
 func parseEnvFile(filename string) (map[string]string, error) {
 	out := make(map[string]string, 0)
