@@ -72,6 +72,7 @@ func testCreateBuilder(t *testing.T, when spec.G, it spec.S) {
 				&config.Config{},
 				logging.NewLogger(logOut, logErr, true, false),
 				mockImageFetcher,
+				nil,
 				mockBPFetcher,
 			)
 

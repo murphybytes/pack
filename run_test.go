@@ -102,7 +102,7 @@ func testRun(t *testing.T, when spec.G, it spec.S) {
 			build, ok := run.Build.(*pack.BuildConfig)
 			h.AssertEq(t, ok, true)
 			for _, field := range []string{
-				"RepoName",
+				"imageRef",
 				"Logger",
 			} {
 				h.AssertSameInstance(

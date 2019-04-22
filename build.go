@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/docker/docker/client"
+	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/pkg/errors"
 
 	"github.com/buildpack/pack/app"
@@ -28,6 +29,10 @@ import (
 type Cache interface {
 	Clear(context.Context) error
 	Image() string
+}
+
+type Lifecycle interface {
+	Execute(context.Context, build.LifecycleOptions) error
 }
 
 type BuildFactory struct {
@@ -186,10 +191,11 @@ func (bf *BuildFactory) BuildConfigFromFlags(ctx context.Context, f *BuildFlags)
 		if runImageConfig := bf.Config.GetRunImage(stack.RunImage.Image); runImageConfig != nil {
 			localMirrors = runImageConfig.Mirrors
 		}
-		b.RunImage, err = stack.GetBestMirror(f.RepoName, localMirrors)
+		ref, err := name.ParseReference(f.RepoName, name.WeakValidation)
 		if err != nil {
 			return nil, err
 		}
+		b.RunImage = stack.GetBestMirror(ref.Context().RegistryStr(), localMirrors)
 
 		b.Logger.Verbose("Selected run image %s from builder %s", style.Symbol(b.RunImage), style.Symbol(b.Builder))
 	}
@@ -219,10 +225,11 @@ func Build(ctx context.Context, outWriter, errWriter io.Writer, appDir, builderI
 		return err
 	}
 
-	c, err := cache.New(repoName, dockerClient)
+	ref, err := name.ParseReference(repoName, name.WeakValidation)
 	if err != nil {
 		return err
 	}
+	c := cache.New(ref, dockerClient)
 
 	logger := logging.NewLogger(outWriter, errWriter, true, false)
 	imageFetcher, err := image.NewFetcher(logger, dockerClient)
@@ -300,10 +307,8 @@ func (b *BuildConfig) Run(ctx context.Context) (*app.Image, error) {
 	if err := lifecycle.Cache(ctx, b.Cache.Image()); err != nil {
 		return nil, err
 	}
-
 	return &app.Image{RepoName: b.RepoName, Logger: b.Logger}, nil
 }
-
 
 func parseEnvFile(filename string) (map[string]string, error) {
 	out := make(map[string]string, 0)

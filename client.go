@@ -14,14 +14,16 @@ type Client struct {
 	logger           *logging.Logger
 	imageFetcher     ImageFetcher
 	buildpackFetcher BuildpackFetcher
+	lifecycle        Lifecycle
 }
 
-func NewClient(config *config.Config, logger *logging.Logger, imageFetcher ImageFetcher, buildpackFetcher BuildpackFetcher) *Client {
+func NewClient(config *config.Config, logger *logging.Logger, imageFetcher ImageFetcher, lifecycle Lifecycle, buildpackFetcher BuildpackFetcher) *Client {
 	return &Client{
 		config:           config,
 		logger:           logger,
 		imageFetcher:     imageFetcher,
 		buildpackFetcher: buildpackFetcher,
+		lifecycle:        lifecycle,
 	}
 }
 

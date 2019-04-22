@@ -109,15 +109,6 @@ func testLifecycle(t *testing.T, when spec.G, it spec.S) {
 					h.AssertContains(t, outBuf.String(), "[phase] running some-lifecycle-phase")
 				})
 
-				it("runs the phase with the environment vars available", func() {
-					phase, err := lifecycle.NewPhase("phase", build.WithArgs("env"))
-					h.AssertNil(t, err)
-					assertRunSucceeds(t, phase, &outBuf, &errBuf)
-					h.AssertContains(t, outBuf.String(), "[phase] env test")
-					h.AssertContains(t, outBuf.String(), "[phase] some-key=some-val")
-					h.AssertContains(t, outBuf.String(), "[phase] other-key=other-val")
-				})
-
 				it("attaches the same layers volume to each phase", func() {
 					writePhase, err := lifecycle.NewPhase("phase", build.WithArgs("write", "/layers/test.txt", "test-layers"))
 					h.AssertNil(t, err)
@@ -156,16 +147,6 @@ func testLifecycle(t *testing.T, when spec.G, it spec.S) {
 					readPhase2.Cleanup()
 					h.AssertNotNil(t, err)
 					h.AssertContains(t, outBuf.String(), "failed to read file")
-				})
-
-				it("preserves original order", func() {
-					phase, err := lifecycle.NewPhase(
-						"phase",
-						build.WithArgs("read", "/buildpacks/order.toml"),
-					)
-					h.AssertNil(t, err)
-					assertRunSucceeds(t, phase, &outBuf, &errBuf)
-					h.AssertContains(t, outBuf.String(), `[phase]     id = "orig.buildpack.id"`)
 				})
 
 				when("#WithArgs", func() {

@@ -23,7 +23,7 @@ import (
 
 func TestInspectBuilder(t *testing.T) {
 	color.NoColor = true
-	spec.Run(t, "InspectBuilder", testInspectBuilder, spec.Parallel(), spec.Report(report.Terminal{}))
+	spec.Run(t, "GetBuilder", testInspectBuilder, spec.Parallel(), spec.Report(report.Terminal{}))
 }
 
 func testInspectBuilder(t *testing.T, when spec.G, it spec.S) {
@@ -47,6 +47,7 @@ func testInspectBuilder(t *testing.T, when spec.G, it spec.S) {
 		},
 			logging.NewLogger(ioutil.Discard, ioutil.Discard, false, false),
 			mockImageFetcher,
+			nil,
 			mockBPFetcher,
 		)
 		builderImage = fakes.NewImage(t, "some/builder", "", "")

@@ -103,7 +103,7 @@ func (l *Lifecycle) Build(ctx context.Context) error {
 }
 
 func (l *Lifecycle) Export(ctx context.Context, repoName string, runImage string, publish bool) error {
-	export, err := l.NewExport(repoName, runImage, publish)
+	export, err := l.newExport(repoName, runImage, publish)
 	if err != nil {
 		return err
 	}
@@ -111,7 +111,7 @@ func (l *Lifecycle) Export(ctx context.Context, repoName string, runImage string
 	return export.Run(ctx)
 }
 
-func (l *Lifecycle) NewExport(repoName, runImage string, publish bool) (*Phase, error) {
+func (l *Lifecycle) newExport(repoName, runImage string, publish bool) (*Phase, error) {
 	if publish {
 		return l.NewPhase(
 			"exporter",

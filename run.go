@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/docker/docker/client"
+	"github.com/google/go-containerregistry/pkg/name"
 
 	"github.com/buildpack/pack/app"
 	"github.com/buildpack/pack/cache"
@@ -52,10 +53,12 @@ func Run(ctx context.Context, outWriter, errWriter io.Writer, appDir, buildImage
 		return err
 	}
 
-	c, err := cache.New(runImage, dockerClient)
+	//TODO: fix this incorrect madness
+	ref, err := name.ParseReference(runImage, name.WeakValidation)
 	if err != nil {
 		return err
 	}
+	c := cache.New(ref, dockerClient)
 
 	logger := logging.NewLogger(outWriter, errWriter, true, false)
 
