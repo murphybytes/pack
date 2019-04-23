@@ -24,6 +24,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
+	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/sclevine/spec"
 	"github.com/sclevine/spec/report"
 
@@ -133,8 +134,9 @@ func testAcceptance(t *testing.T, when spec.G, it spec.S) {
 			dockerCli.ContainerKill(context.TODO(), containerName, "SIGKILL")
 			dockerCli.ContainerRemove(context.TODO(), containerName, dockertypes.ContainerRemoveOptions{Force: true})
 			dockerCli.ImageRemove(context.TODO(), repoName, dockertypes.ImageRemoveOptions{Force: true, PruneChildren: true})
-			cacheImage, err := cache.New(repoName, dockerCli)
+			ref, err := name.ParseReference(repoName, name.WeakValidation)
 			h.AssertNil(t, err)
+			cacheImage := cache.New(ref, dockerCli)
 			cacheImage.Clear(context.TODO())
 		})
 

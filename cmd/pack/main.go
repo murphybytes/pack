@@ -43,8 +43,8 @@ func main() {
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Show less output")
 	commands.AddHelpFlag(rootCmd, "pack")
 
-	rootCmd.AddCommand(commands.Build(&logger, &imageFetcher))
-	rootCmd.AddCommand(commands.Run(&logger, &imageFetcher))
+	rootCmd.AddCommand(commands.Build(&logger, &cfg, &packClient))
+	rootCmd.AddCommand(commands.Run(&logger, &cfg, &packClient))
 	rootCmd.AddCommand(commands.Rebase(&logger, &packClient))
 
 	rootCmd.AddCommand(commands.CreateBuilder(&logger, &packClient))

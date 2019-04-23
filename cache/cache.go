@@ -17,7 +17,6 @@ type Cache struct {
 
 func New(imageRef name.Reference, dockerClient *client.Client) *Cache {
 	sum := sha256.Sum256([]byte(imageRef.String()))
-
 	return &Cache{
 		image:  fmt.Sprintf("pack-cache-%x", sum[:6]),
 		docker: dockerClient,

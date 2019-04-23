@@ -2,30 +2,26 @@ package build
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
-	"os"
-	"path/filepath"
-	"runtime"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/buildpack/lifecycle/image"
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
+	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/pkg/errors"
+
+	"github.com/buildpack/pack/cache"
+	"github.com/buildpack/pack/style"
 
 	"github.com/buildpack/pack/builder"
 	"github.com/buildpack/pack/buildpack"
 	"github.com/buildpack/pack/logging"
-	"github.com/buildpack/pack/style"
 )
 
 type Lifecycle struct {
 	Builder      *builder.Builder
-	Logger       *logging.Logger
-	Docker       *client.Client
+	logger       *logging.Logger
+	docker       *client.Client
 	LayersVolume string
 	AppVolume    string
 	appDir       string
@@ -45,106 +41,85 @@ func init() {
 	rand.Seed(time.Now().UTC().UnixNano())
 }
 
-func NewLifecycle(c LifecycleConfig) (*Lifecycle, error) {
-	client, err := client.NewClientWithOpts(client.FromEnv, client.WithVersion("1.38"))
-	if err != nil {
-		return nil, err
-	}
+func NewLifecycle(docker *client.Client, logger *logging.Logger) *Lifecycle {
+	return &Lifecycle{logger: logger, docker: docker}
+}
 
-	factory, err := image.NewFactory()
-	if err != nil {
-		return nil, err
-	}
+type LifecycleOptions struct {
+	AppDir      string
+	ImageRef    name.Reference
+	Builder     *builder.Builder
+	RunImageRef name.Reference
+	ClearCache  bool
+	Publish     bool
+}
 
-	img, err := factory.NewLocal(c.BuilderImage)
-	if err != nil {
-		return nil, err
-	}
-
-	bldr, err := builder.New(img, fmt.Sprintf("pack.local/builder/%x", randString(10)))
-	if err != nil {
-		return nil, err
-	}
-
-	bldr.SetEnv(c.Env)
-
-	if len(c.Buildpacks) != 0 {
-		var ephemeralGroup []builder.GroupBuildpack
-		for _, bp := range c.Buildpacks {
-			var gb builder.GroupBuildpack
-			if isLocalBuildpack(bp) {
-				if runtime.GOOS == "windows" {
-					return nil, fmt.Errorf("directory buildpacks are not implemented on windows")
-				}
-
-				b, err := c.BPFetcher.FetchBuildpack(bp)
-				if err != nil {
-					return nil, err
-				}
-
-				if err := bldr.AddBuildpack(b); err != nil {
-					return nil, err
-				}
-
-				gb = builder.GroupBuildpack{ID: b.ID, Version: b.Version}
-			} else {
-				id, version := c.parseBuildpack(bp)
-
-				b, ok := bldr.GetBuildpack(id, version)
-				if !ok {
-					return nil, fmt.Errorf("buildpack '%s@%s' does not exist in builder '%s'", id, version, bldr.Name())
-				}
-
-				gb = builder.GroupBuildpack{ID: b.ID, Version: b.Version}
-			}
-			ephemeralGroup = append(ephemeralGroup, gb)
+func (l *Lifecycle) Execute(ctx context.Context, opts LifecycleOptions) error {
+	cacheImage := cache.New(opts.ImageRef, l.docker)
+	if opts.ClearCache {
+		if err := cacheImage.Clear(ctx); err != nil {
+			return errors.Wrap(err, "clearing cache")
 		}
-		bldr.SetOrder([]builder.GroupMetadata{{Buildpacks: ephemeralGroup}})
+		l.logger.Verbose("Cache image %s cleared", style.Symbol(cacheImage.Image()))
+	}
+	l.Setup(opts.AppDir, opts.Builder)
+	defer l.Cleanup()
+
+	l.logger.Verbose(style.Step("DETECTING"))
+	if err := l.Detect(ctx); err != nil {
+		return err
 	}
 
-	if err := bldr.Save(); err != nil {
-		return nil, err
+	l.logger.Verbose(style.Step("RESTORING"))
+	if opts.ClearCache {
+		l.logger.Verbose("Skipping 'restore' due to clearing cache")
+	} else if err := l.Restore(ctx, cacheImage.Image()); err != nil {
+		return err
 	}
 
-	return &Lifecycle{
-		Builder:      bldr,
-		Logger:       c.Logger,
-		Docker:       client,
-		LayersVolume: "pack-layers-" + randString(10),
-		AppVolume:    "pack-app-" + randString(10),
-		appDir:       c.AppDir,
-		appOnce:      &sync.Once{},
-	}, nil
+	l.logger.Verbose(style.Step("ANALYZING"))
+	if opts.ClearCache {
+		l.logger.Verbose("Skipping 'analyze' due to clearing cache")
+	} else {
+		if err := l.Analyze(ctx, opts.ImageRef.Name(), opts.Publish); err != nil {
+			return err
+		}
+	}
+
+	l.logger.Verbose(style.Step("BUILDING"))
+	if err := l.Build(ctx); err != nil {
+		return err
+	}
+
+	l.logger.Verbose(style.Step("EXPORTING"))
+	if err := l.Export(ctx, opts.ImageRef.Name(), opts.RunImageRef.Name(), opts.Publish); err != nil {
+		return err
+	}
+
+	l.logger.Verbose(style.Step("CACHING"))
+	if err := l.Cache(ctx, cacheImage.Image()); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (l *Lifecycle) Setup(appDir string, builder *builder.Builder) {
+	l.LayersVolume = "pack-layers-" + randString(10)
+	l.AppVolume = "pack-app-" + randString(10)
+	l.appDir = appDir
+	l.appOnce = &sync.Once{}
+	l.Builder = builder
 }
 
 func (l *Lifecycle) Cleanup() error {
 	var reterr error
-	if _, err := l.Docker.ImageRemove(context.Background(), l.Builder.Name(), types.ImageRemoveOptions{}); err != nil {
-		reterr = errors.Wrapf(err, "failed to clean up builder image %s", l.Builder.Name())
-	}
-	if err := l.Docker.VolumeRemove(context.Background(), l.LayersVolume, true); err != nil {
+	if err := l.docker.VolumeRemove(context.Background(), l.LayersVolume, true); err != nil {
 		reterr = errors.Wrapf(err, "failed to clean up layers volume %s", l.LayersVolume)
 	}
-	if err := l.Docker.VolumeRemove(context.Background(), l.AppVolume, true); err != nil {
+	if err := l.docker.VolumeRemove(context.Background(), l.AppVolume, true); err != nil {
 		reterr = errors.Wrapf(err, "failed to clean up app volume %s", l.AppVolume)
 	}
 	return reterr
-}
-
-func (c *LifecycleConfig) parseBuildpack(bp string) (string, string) {
-	parts := strings.Split(bp, "@")
-	if len(parts) == 2 {
-		return parts[0], parts[1]
-	}
-	c.Logger.Verbose("No version for %s buildpack provided, will use %s", style.Symbol(parts[0]), style.Symbol(parts[0]+"@latest"))
-	return parts[0], "latest"
-}
-
-func isLocalBuildpack(path string) bool {
-	if _, err := os.Stat(filepath.Join(path, "buildpack.toml")); !os.IsNotExist(err) {
-		return true
-	}
-	return false
 }
 
 func randString(n int) string {
