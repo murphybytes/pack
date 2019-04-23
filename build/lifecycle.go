@@ -46,16 +46,17 @@ func NewLifecycle(docker *client.Client, logger *logging.Logger) *Lifecycle {
 }
 
 type LifecycleOptions struct {
-	AppDir      string
-	ImageRef    name.Reference
-	Builder     *builder.Builder
-	RunImageRef name.Reference
-	ClearCache  bool
-	Publish     bool
+	AppDir     string
+	Image      name.Reference
+	Builder    *builder.Builder
+	RunImage   string
+	ClearCache bool
+	Publish    bool
 }
 
 func (l *Lifecycle) Execute(ctx context.Context, opts LifecycleOptions) error {
-	cacheImage := cache.New(opts.ImageRef, l.docker)
+	cacheImage := cache.New(opts.Image, l.docker)
+	l.logger.Verbose("Using cache image %s", style.Symbol(cacheImage.Image()))
 	if opts.ClearCache {
 		if err := cacheImage.Clear(ctx); err != nil {
 			return errors.Wrap(err, "clearing cache")
@@ -81,7 +82,7 @@ func (l *Lifecycle) Execute(ctx context.Context, opts LifecycleOptions) error {
 	if opts.ClearCache {
 		l.logger.Verbose("Skipping 'analyze' due to clearing cache")
 	} else {
-		if err := l.Analyze(ctx, opts.ImageRef.Name(), opts.Publish); err != nil {
+		if err := l.Analyze(ctx, opts.Image.Name(), opts.Publish); err != nil {
 			return err
 		}
 	}
@@ -92,7 +93,7 @@ func (l *Lifecycle) Execute(ctx context.Context, opts LifecycleOptions) error {
 	}
 
 	l.logger.Verbose(style.Step("EXPORTING"))
-	if err := l.Export(ctx, opts.ImageRef.Name(), opts.RunImageRef.Name(), opts.Publish); err != nil {
+	if err := l.Export(ctx, opts.Image.Name(), opts.RunImage, opts.Publish); err != nil {
 		return err
 	}
 

@@ -8,15 +8,15 @@ import (
 	"github.com/buildpack/pack/logging"
 )
 
-
 func Run(logger *logging.Logger, config *config.Config, packClient *pack.Client) *cobra.Command {
 	var flags BuildFlags
+	var ports []string
 	ctx := createCancellableContext()
 
 	cmd := &cobra.Command{
-		Use:   "build <image-name>",
-		Args:  cobra.ExactArgs(1),
-		Short: "Generate app image from source code",
+		Use:   "run",
+		Args:  cobra.NoArgs,
+		Short: "Build and run app image (recommended for development only)",
 		RunE: logError(logger, func(cmd *cobra.Command, args []string) error {
 			if config.DefaultBuilder == "" && flags.Builder == "" {
 				suggestSettingBuilder(logger)
@@ -34,10 +34,12 @@ func Run(logger *logging.Logger, config *config.Config, packClient *pack.Client)
 				NoPull:     flags.NoPull,
 				ClearCache: flags.ClearCache,
 				Buildpacks: flags.Buildpacks,
+				Ports:      ports,
 			})
 		}),
 	}
-	buildCommandFlags(cmd, flags)
-	AddHelpFlag(cmd, "build")
+	buildCommandFlags(cmd, &flags)
+	cmd.Flags().StringSliceVar(&ports, "port", nil, "Port to publish (defaults to port(s) exposed by container)"+multiValueHelp("port"))
+	AddHelpFlag(cmd, "run")
 	return cmd
 }

@@ -187,7 +187,7 @@ func testBuilder(t *testing.T, when spec.G, it spec.S) {
 						Dir:     filepath.Join("testdata", "buildpack"),
 						Stacks:  []buildpack.Stack{{ID: "other.stack.id"}},
 					})
-					h.AssertError(t, err, "buildpack 'some-buildpack-id:some-buildpack-version' does not support stack 'some.stack.id'")
+					h.AssertError(t, err, "buildpack 'some-buildpack-id' version 'some-buildpack-version' does not support stack 'some.stack.id'")
 				})
 			})
 

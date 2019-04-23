@@ -27,7 +27,8 @@ func (c *Client) Run(ctx context.Context, opts RunOptions) error {
 	if err != nil {
 		return errors.Wrapf(err, "invalid app dir '%s'", opts.AppDir)
 	}
-	imageName := fmt.Sprintf("pack.local/run/%x", sha256.Sum256([]byte(appDir)))
+	sum := sha256.Sum256([]byte(appDir))
+	imageName := fmt.Sprintf("pack.local/run/%x", sum[:8])
 	err = c.Build(ctx, BuildOptions{
 		AppDir:     appDir,
 		Builder:    opts.Builder,

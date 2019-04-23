@@ -5,7 +5,7 @@ package acceptance
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -234,7 +234,7 @@ func testAcceptance(t *testing.T, when spec.G, it spec.S) {
 					})
 
 					when("the buildpack stack doesn't match the builder", func() {
-						it.Pend("errors", func() {
+						it("errors", func() {
 							skipOnWindows(t, "buildpack directories not supported on windows")
 							cmd := packCmd(
 								"build", repoName,
@@ -243,7 +243,7 @@ func testAcceptance(t *testing.T, when spec.G, it spec.S) {
 							)
 							txt, err := h.RunE(cmd)
 							h.AssertNotNil(t, err)
-							h.AssertContains(t, txt, "wrong stack")
+							h.AssertContains(t, txt, "buildpack 'other/stack/bp' version 'other-stack-version' does not support stack 'pack.test.stack'")
 						})
 					})
 				})
@@ -362,7 +362,7 @@ func testAcceptance(t *testing.T, when spec.G, it spec.S) {
 						h.DockerRmi(dockerCli, runImageName)
 					})
 
-					it.Pend("fails with a message", func() {
+					it("fails with a message", func() {
 						cmd := packCmd(
 							"build", repoName,
 							"-p", filepath.Join("testdata", "mock_app"),
@@ -370,7 +370,7 @@ func testAcceptance(t *testing.T, when spec.G, it spec.S) {
 						)
 						txt, err := h.RunE(cmd)
 						h.AssertNotNil(t, err)
-						h.AssertContains(t, txt, "wrong stack")
+						h.AssertContains(t, txt, "run-image stack id 'other.stack.id' does not match builder stack 'pack.test.stack'")
 					})
 				})
 			})
@@ -451,10 +451,12 @@ func testAcceptance(t *testing.T, when spec.G, it spec.S) {
 			it.After(func() {
 				absPath, err := filepath.Abs(filepath.Join("testdata", "mock_app"))
 				h.AssertNil(t, err)
-				repoName := fmt.Sprintf("pack.local/run/%x", md5.Sum([]byte(absPath)))
-				h.AssertNil(t, h.DockerRmi(dockerCli, repoName))
-				cacheImage, err := cache.New(repoName, dockerCli)
+				sum := sha256.Sum256([]byte(absPath))
+				repoName := fmt.Sprintf("pack.local/run/%x", sum[:8])
+				ref, err := name.ParseReference(repoName, name.WeakValidation)
 				h.AssertNil(t, err)
+				h.DockerRmi(dockerCli, repoName)
+				cacheImage := cache.New(ref, dockerCli)
 				cacheImage.Clear(context.TODO())
 			})
 
@@ -538,8 +540,10 @@ func testAcceptance(t *testing.T, when spec.G, it spec.S) {
 
 			it.After(func() {
 				h.DockerRmi(dockerCli, origID, runBefore, runAfter)
-				cacheImage, err := cache.New(repoName, dockerCli)
+				ref, err := name.ParseReference(repoName, name.WeakValidation)
 				h.AssertNil(t, err)
+				h.AssertNil(t, h.DockerRmi(dockerCli, repoName))
+				cacheImage := cache.New(ref, dockerCli)
 				cacheImage.Clear(context.TODO())
 			})
 
@@ -577,8 +581,10 @@ func testAcceptance(t *testing.T, when spec.G, it spec.S) {
 
 			it.After(func() {
 				h.DockerRmi(dockerCli, runBefore, runAfter)
-				cacheImage, err := cache.New(repoName, dockerCli)
+				ref, err := name.ParseReference(repoName, name.WeakValidation)
 				h.AssertNil(t, err)
+				h.AssertNil(t, h.DockerRmi(dockerCli, repoName))
+				cacheImage := cache.New(ref, dockerCli)
 				cacheImage.Clear(context.TODO())
 			})
 
@@ -626,8 +632,10 @@ func testAcceptance(t *testing.T, when spec.G, it spec.S) {
 
 			it.After(func() {
 				h.DockerRmi(dockerCli, origID, builderName, origRunImageID, runImage)
-				cacheImage, err := cache.New(repoName, dockerCli)
+				ref, err := name.ParseReference(repoName, name.WeakValidation)
 				h.AssertNil(t, err)
+				h.AssertNil(t, h.DockerRmi(dockerCli, repoName))
+				cacheImage := cache.New(ref, dockerCli)
 				cacheImage.Clear(context.TODO())
 			})
 
@@ -798,7 +806,8 @@ func fetchHostPort(t *testing.T, dockerID string) string {
 
 func imgSHAFromOutput(txt, repoName string) (string, error) {
 	for _, m := range regexp.MustCompile(`\*\*\* Image: (.+)@(.+)`).FindAllStringSubmatch(txt, -1) {
-		if m[1] == repoName {
+		// remove the :latest tag check once we fix tag + sha output error in lifecycle
+		if m[1] == repoName || m[1] == repoName + ":latest" {
 			return m[2], nil
 		}
 	}

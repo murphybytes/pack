@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/buildpack/pack/style"
 	"github.com/pkg/errors"
 
 	"github.com/buildpack/pack/builder"
@@ -26,9 +27,10 @@ func (c *Client) CreateBuilder(ctx context.Context, opts CreateBuilderOptions) e
 		return err
 	}
 
+	c.logger.Verbose("Creating builder %s from build-image %s", style.Symbol(opts.BuilderName), style.Symbol(baseImage.Name()))
 	builderImage, err := builder.New(baseImage, opts.BuilderName)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "invalid build-image")
 	}
 
 	if builderImage.StackID != opts.BuilderConfig.Stack.ID {

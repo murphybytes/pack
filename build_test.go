@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/buildpack/lifecycle/image/fakes"
+	"github.com/docker/docker/client"
 	"github.com/fatih/color"
 	"github.com/sclevine/spec"
 	"github.com/sclevine/spec/report"
@@ -65,19 +66,22 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 		})
 		fakeImageFetcher.LocalImages[defaultBuilderImage.Name()] = defaultBuilderImage
 
-		fakeDefaultRunImage := fakes.NewImage(t, "index.docker.io/default/run:latest", "", "")
+		fakeDefaultRunImage := fakes.NewImage(t, "default/run", "", "")
 		h.AssertNil(t, fakeDefaultRunImage.SetLabel("io.buildpacks.stack.id", defaultBuilderStackID))
 		fakeImageFetcher.LocalImages[fakeDefaultRunImage.Name()] = fakeDefaultRunImage
 
-		fakeMirror1 := fakes.NewImage(t, "registry1.example.com/run/mirror:latest", "", "")
+		fakeMirror1 := fakes.NewImage(t, "registry1.example.com/run/mirror", "", "")
 		h.AssertNil(t, fakeMirror1.SetLabel("io.buildpacks.stack.id", defaultBuilderStackID))
 		fakeImageFetcher.LocalImages[fakeMirror1.Name()] = fakeMirror1
 
-		fakeMirror2 := fakes.NewImage(t, "registry2.example.com/run/mirror:latest", "", "")
+		fakeMirror2 := fakes.NewImage(t, "registry2.example.com/run/mirror", "", "")
 		h.AssertNil(t, fakeMirror2.SetLabel("io.buildpacks.stack.id", defaultBuilderStackID))
 		fakeImageFetcher.LocalImages[fakeMirror2.Name()] = fakeMirror2
 		var err error
 		tmpDir, err = ioutil.TempDir("", "build-test-bp-fetch-cache")
+		h.AssertNil(t, err)
+
+		docker, err := client.NewClientWithOpts(client.FromEnv, client.WithVersion("1.38"))
 		h.AssertNil(t, err)
 
 		subject = NewClient(
@@ -86,6 +90,7 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 			fakeImageFetcher,
 			fakeLifecycle,
 			buildpack.NewFetcher(logging.NewLogger(logOut, logErr, true, false), tmpDir),
+			docker,
 		)
 	})
 
@@ -123,9 +128,9 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 				h.AssertNil(t, subject.Build(context.TODO(), BuildOptions{
 					Image: "example.com/some/repo:tag",
 				}))
-				h.AssertEq(t, fakeLifecycle.Opts.ImageRef.Context().RegistryStr(), "example.com")
-				h.AssertEq(t, fakeLifecycle.Opts.ImageRef.Context().RepositoryStr(), "some/repo")
-				h.AssertEq(t, fakeLifecycle.Opts.ImageRef.Identifier(), "tag")
+				h.AssertEq(t, fakeLifecycle.Opts.Image.Context().RegistryStr(), "example.com")
+				h.AssertEq(t, fakeLifecycle.Opts.Image.Context().RepositoryStr(), "some/repo")
+				h.AssertEq(t, fakeLifecycle.Opts.Image.Identifier(), "tag")
 			})
 		})
 
@@ -156,6 +161,16 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 				}),
 					fmt.Sprintf("invalid app dir '%s'", filepath.Join("testdata", "just-a-file.txt")),
 				)
+			})
+
+			it("resolves the absolute path", func() {
+				h.AssertNil(t, subject.Build(context.TODO(), BuildOptions{
+					Image:  "some/app",
+					AppDir: filepath.Join("testdata", "some-app"),
+				}))
+				absPath, err := filepath.Abs(filepath.Join("testdata", "some-app"))
+				h.AssertNil(t, err)
+				h.AssertEq(t, fakeLifecycle.Opts.AppDir, absPath)
 			})
 		})
 
@@ -192,7 +207,7 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 					})
 					fakeImageFetcher.LocalImages[customBuilderImage.Name()] = customBuilderImage
 
-					fakeRunImage := fakes.NewImage(t, "index.docker.io/some/run:latest", "", "")
+					fakeRunImage := fakes.NewImage(t, "some/run", "", "")
 					fakeRunImage.SetLabel("io.buildpacks.stack.id", "some.stack.id")
 					fakeImageFetcher.LocalImages[fakeRunImage.Name()] = fakeRunImage
 				})
@@ -210,7 +225,7 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 		when("RunImage option", func() {
 			when("run image stack matches the builder stack", func() {
 				it.Before(func() {
-					fakeRunImage := fakes.NewImage(t, "index.docker.io/custom/run:latest", "", "")
+					fakeRunImage := fakes.NewImage(t, "custom/run", "", "")
 					fakeRunImage.SetLabel("io.buildpacks.stack.id", defaultBuilderStackID)
 					fakeImageFetcher.LocalImages[fakeRunImage.Name()] = fakeRunImage
 				})
@@ -220,13 +235,13 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 						Image:    "some/app",
 						RunImage: "custom/run",
 					}))
-					h.AssertEq(t, fakeLifecycle.Opts.RunImageRef.Name(), "index.docker.io/custom/run:latest")
+					h.AssertEq(t, fakeLifecycle.Opts.RunImage, "custom/run")
 				})
 			})
 
 			when("run image stack does not match the builder stack", func() {
 				it.Before(func() {
-					fakeRunImage := fakes.NewImage(t, "index.docker.io/custom/run:latest", "", "")
+					fakeRunImage := fakes.NewImage(t, "custom/run", "", "")
 					fakeRunImage.SetLabel("io.buildpacks.stack.id", "other.stack")
 					fakeImageFetcher.LocalImages[fakeRunImage.Name()] = fakeRunImage
 				})
@@ -236,7 +251,7 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 						Image:    "some/app",
 						RunImage: "custom/run",
 					}),
-						"invalid run-image 'index.docker.io/custom/run:latest': run-image stack id 'other.stack' does not match builder stack 'default.stack'",
+						"invalid run-image 'custom/run': run-image stack id 'other.stack' does not match builder stack 'default.stack'",
 					)
 				})
 			})
@@ -247,21 +262,21 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 						h.AssertNil(t, subject.Build(context.TODO(), BuildOptions{
 							Image: "some/app",
 						}))
-						h.AssertEq(t, fakeLifecycle.Opts.RunImageRef.Name(), "index.docker.io/default/run:latest")
+						h.AssertEq(t, fakeLifecycle.Opts.RunImage, "default/run")
 					})
 
 					it("chooses the best mirror from the builder", func() {
 						h.AssertNil(t, subject.Build(context.TODO(), BuildOptions{
 							Image: "registry1.example.com/some/app",
 						}))
-						h.AssertEq(t, fakeLifecycle.Opts.RunImageRef.Name(), "registry1.example.com/run/mirror:latest")
+						h.AssertEq(t, fakeLifecycle.Opts.RunImage, "registry1.example.com/run/mirror")
 					})
 
 					it("chooses the best mirror from the builder", func() {
 						h.AssertNil(t, subject.Build(context.TODO(), BuildOptions{
 							Image: "registry2.example.com/some/app",
 						}))
-						h.AssertEq(t, fakeLifecycle.Opts.RunImageRef.Name(), "registry2.example.com/run/mirror:latest")
+						h.AssertEq(t, fakeLifecycle.Opts.RunImage, "registry2.example.com/run/mirror")
 					})
 				})
 			})
@@ -279,11 +294,11 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 							},
 						}
 
-						fakeLocalMirror := fakes.NewImage(t, "index.docker.io/local/mirror:latest", "", "")
+						fakeLocalMirror := fakes.NewImage(t, "local/mirror", "", "")
 						h.AssertNil(t, fakeLocalMirror.SetLabel("io.buildpacks.stack.id", defaultBuilderStackID))
 						fakeImageFetcher.LocalImages[fakeLocalMirror.Name()] = fakeLocalMirror
 
-						fakeLocalMirror1 := fakes.NewImage(t, "registry1.example.com/local/mirror:latest", "", "")
+						fakeLocalMirror1 := fakes.NewImage(t, "registry1.example.com/local/mirror", "", "")
 						h.AssertNil(t, fakeLocalMirror1.SetLabel("io.buildpacks.stack.id", defaultBuilderStackID))
 						fakeImageFetcher.LocalImages[fakeLocalMirror1.Name()] = fakeLocalMirror1
 					})
@@ -292,21 +307,21 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 						h.AssertNil(t, subject.Build(context.TODO(), BuildOptions{
 							Image: "some/app",
 						}))
-						h.AssertEq(t, fakeLifecycle.Opts.RunImageRef.Name(), "index.docker.io/local/mirror:latest")
+						h.AssertEq(t, fakeLifecycle.Opts.RunImage, "local/mirror")
 					})
 
 					it("choose the correct locally configured mirror for the registry", func() {
 						h.AssertNil(t, subject.Build(context.TODO(), BuildOptions{
 							Image: "registry1.example.com/some/app",
 						}))
-						h.AssertEq(t, fakeLifecycle.Opts.RunImageRef.Name(), "registry1.example.com/local/mirror:latest")
+						h.AssertEq(t, fakeLifecycle.Opts.RunImage, "registry1.example.com/local/mirror")
 					})
 
 					it("falls back to builder mirrors", func() {
 						h.AssertNil(t, subject.Build(context.TODO(), BuildOptions{
 							Image: "registry2.example.com/some/app",
 						}))
-						h.AssertEq(t, fakeLifecycle.Opts.RunImageRef.Name(), "registry2.example.com/run/mirror:latest")
+						h.AssertEq(t, fakeLifecycle.Opts.RunImage, "registry2.example.com/run/mirror")
 					})
 				})
 			})
@@ -395,7 +410,7 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 			var remoteRunImage *fakes.Image
 
 			it("uses a remote run image", func() {
-				remoteRunImage = fakes.NewImage(t, "index.docker.io/default/run:latest", "", "")
+				remoteRunImage = fakes.NewImage(t, "default/run", "", "")
 				h.AssertNil(t, remoteRunImage.SetLabel("io.buildpacks.stack.id", defaultBuilderStackID))
 				fakeImageFetcher.RemoteImages[remoteRunImage.Name()] = remoteRunImage
 
@@ -405,7 +420,7 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 				}))
 				h.AssertEq(t, fakeLifecycle.Opts.Publish, true)
 
-				args := fakeImageFetcher.FetchCalls["index.docker.io/default/run:latest"]
+				args := fakeImageFetcher.FetchCalls["default/run"]
 				h.AssertEq(t, args.Daemon, false)
 
 				args = fakeImageFetcher.FetchCalls[clientConfig.DefaultBuilder]
@@ -420,7 +435,7 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 				}))
 				h.AssertEq(t, fakeLifecycle.Opts.Publish, false)
 
-				args := fakeImageFetcher.FetchCalls["index.docker.io/default/run:latest"]
+				args := fakeImageFetcher.FetchCalls["default/run"]
 				h.AssertEq(t, args.Daemon, true)
 				h.AssertEq(t, args.Pull, true)
 
@@ -438,7 +453,7 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 						NoPull: true,
 					}))
 
-					args := fakeImageFetcher.FetchCalls["index.docker.io/default/run:latest"]
+					args := fakeImageFetcher.FetchCalls["default/run"]
 					h.AssertEq(t, args.Daemon, true)
 					h.AssertEq(t, args.Pull, false)
 
@@ -455,7 +470,7 @@ func testBuild(t *testing.T, when spec.G, it spec.S) {
 						NoPull: false,
 					}))
 
-					args := fakeImageFetcher.FetchCalls["index.docker.io/default/run:latest"]
+					args := fakeImageFetcher.FetchCalls["default/run"]
 					h.AssertEq(t, args.Daemon, true)
 					h.AssertEq(t, args.Pull, true)
 

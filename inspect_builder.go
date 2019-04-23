@@ -3,6 +3,7 @@ package pack
 import (
 	"context"
 
+	"github.com/buildpack/pack/style"
 	"github.com/pkg/errors"
 
 	"github.com/buildpack/pack/builder"
@@ -35,7 +36,7 @@ func (c *Client) InspectBuilder(name string, daemon bool) (*BuilderInfo, error) 
 
 	bldr, err := builder.GetBuilder(img)
 	if err != nil {
-		return nil, errors.Wrapf(err, "getting builder '%s'", name)
+		return nil, errors.Wrapf(err, "invalid builder %s", style.Symbol(name))
 	}
 
 	runImageConfig := c.config.GetRunImage(bldr.GetStackInfo().RunImage.Image)

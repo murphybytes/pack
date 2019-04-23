@@ -62,13 +62,13 @@ func Build(logger *logging.Logger, config *config.Config, packClient *pack.Clien
 			return nil
 		}),
 	}
-	buildCommandFlags(cmd, flags)
+	buildCommandFlags(cmd, &flags)
 	cmd.Flags().BoolVar(&flags.Publish, "publish", false, "Publish to registry")
 	AddHelpFlag(cmd, "build")
 	return cmd
 }
 
-func buildCommandFlags(cmd *cobra.Command, buildFlags BuildFlags) {
+func buildCommandFlags(cmd *cobra.Command, buildFlags *BuildFlags) {
 	cmd.Flags().StringVarP(&buildFlags.AppDir, "path", "p", "", "Path to app dir (defaults to current working directory)")
 	cmd.Flags().StringVar(&buildFlags.Builder, "builder", "", "Builder (defaults to builder configured by 'set-default-builder')")
 	cmd.Flags().StringVar(&buildFlags.RunImage, "run-image", "", "Run image (defaults to default stack's run image)")
@@ -80,9 +80,13 @@ func buildCommandFlags(cmd *cobra.Command, buildFlags BuildFlags) {
 }
 
 func parseEnv(envFile string, envVars []string) (map[string]string, error) {
-	env, err := parseEnvFile(envFile)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to parse env file '%s'", envFile)
+	env := map[string]string{}
+	if envFile != "" {
+		var err error
+		env, err = parseEnvFile(envFile)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to parse env file '%s'", envFile)
+		}
 	}
 	for _, envVar := range envVars {
 		env = addEnvVar(env, envVar)

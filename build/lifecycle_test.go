@@ -62,8 +62,7 @@ func testLifecycle(t *testing.T, when spec.G, it spec.S) {
 		var err error
 		docker, err = client.NewClientWithOpts(client.FromEnv, client.WithVersion("1.38"))
 		h.AssertNil(t, err)
-		subject, err = build.NewLifecycle(docker, logger)
-		h.AssertNil(t, err)
+		subject = build.NewLifecycle(docker, logger)
 		imageFactory, err := image.NewFactory()
 		h.AssertNil(t, err)
 		builderImage, err := imageFactory.NewLocal(repoName)

@@ -3,14 +3,14 @@ package commands
 import (
 	"context"
 	"fmt"
-	"github.com/buildpack/pack/style"
 	"math/rand"
 	"os"
 	"os/signal"
 	"syscall"
 	"text/tabwriter"
 
-	"github.com/docker/docker/client"
+	"github.com/buildpack/pack/style"
+
 	"github.com/spf13/cobra"
 
 	"github.com/buildpack/pack"
@@ -76,12 +76,6 @@ func createCancellableContext() context.Context {
 
 	return ctx
 }
-
-func dockerClient() (*client.Client, error){
-	return client.NewClientWithOpts(client.FromEnv, client.WithVersion("1.38"))
-}
-
-
 
 func suggestSettingBuilder(logger *logging.Logger) {
 	logger.Info("Please select a default builder with:\n")

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/buildpack/lifecycle/image"
+	"github.com/docker/docker/api/types"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/pkg/errors"
 
@@ -27,7 +28,7 @@ type Lifecycle interface {
 type BuildOptions struct {
 	AppDir     string // defaults to current working directory
 	Builder    string // defaults to default builder on the client config
-	RunImage   string // defaults to the best mirror from the builder image
+	RunImage   string // defaults to the best mirror from the builder image or pack config
 	Env        map[string]string
 	Image      string // required
 	Publish    bool
@@ -37,7 +38,7 @@ type BuildOptions struct {
 }
 
 func (c *Client) Build(ctx context.Context, opts BuildOptions) error {
-	imageRef, err := c.processTagReference(opts.Image)
+	imageRef, err := c.validateImageReference(opts.Image)
 	if err != nil {
 		return errors.Wrapf(err, "invalid image name '%s'", opts.Image)
 	}
@@ -51,7 +52,6 @@ func (c *Client) Build(ctx context.Context, opts BuildOptions) error {
 	if err != nil {
 		return errors.Wrapf(err, "invalid builder '%s'", opts.Builder)
 	}
-
 	rawBuilderImage, err := c.imageFetcher.Fetch(ctx, builderRef.Name(), true, !opts.NoPull)
 	if err != nil {
 		return errors.Wrapf(err, "failed to fetch builder image '%s'", builderRef.Name())
@@ -62,13 +62,10 @@ func (c *Client) Build(ctx context.Context, opts BuildOptions) error {
 		return errors.Wrapf(err, "invalid builder '%s'", opts.Builder)
 	}
 
-	runImageRef, err := c.processRunImageName(opts.RunImage, imageRef.Context().RegistryStr(), builderImage.GetStackInfo())
-	if err != nil {
-		return errors.Wrap(err, "invalid run-image")
-	}
+	runImage := c.processRunImageName(opts.RunImage, imageRef.Context().RegistryStr(), builderImage.GetStackInfo())
 
-	if _, err := c.validateRunImage(ctx, runImageRef.Name(), opts.NoPull, opts.Publish, builderImage.StackID); err != nil {
-		return errors.Wrapf(err, "invalid run-image '%s'", runImageRef.Name())
+	if _, err := c.validateRunImage(ctx, runImage, opts.NoPull, opts.Publish, builderImage.StackID); err != nil {
+		return errors.Wrapf(err, "invalid run-image '%s'", runImage)
 	}
 
 	extraBuildpacks, group, err := c.processBuildpacks(opts.Buildpacks)
@@ -78,23 +75,24 @@ func (c *Client) Build(ctx context.Context, opts BuildOptions) error {
 
 	ephemeralBuilder, err := c.createEphemeralBuilder(rawBuilderImage, opts.Env, group, extraBuildpacks)
 	if err != nil {
-		return errors.Wrap(err, "failed to create ephemeral builder image")
+		return err
 	}
-	defer rawBuilderImage.Delete()
+	defer c.docker.ImageRemove(context.Background(), ephemeralBuilder.Name(), types.ImageRemoveOptions{Force: true})
 
 	return c.lifecycle.Execute(ctx, build.LifecycleOptions{
-		AppDir:      appDir,
-		ImageRef:    imageRef,
-		Builder:     ephemeralBuilder,
-		RunImageRef: runImageRef,
-		ClearCache:  opts.ClearCache,
-		Publish:     opts.Publish,
+		AppDir:     appDir,
+		Image:      imageRef,
+		Builder:    ephemeralBuilder,
+		RunImage:   runImage,
+		ClearCache: opts.ClearCache,
+		Publish:    opts.Publish,
 	})
 }
 
 func (c *Client) processBuilderName(builderName string) (name.Reference, error) {
 	if builderName == "" {
 		if c.config.DefaultBuilder != "" {
+			c.logger.Verbose("Using default builder image %s", style.Symbol(c.config.DefaultBuilder))
 			builderName = c.config.DefaultBuilder
 		} else {
 			return nil, errors.New("builder is a required parameter if the client has no default builder")
@@ -114,9 +112,10 @@ func (c *Client) processBuilderImage(img image.Image) (*builder.Builder, error) 
 	return builder, nil
 }
 
-func (c *Client) processRunImageName(runImage, targetRegistry string, builderStackInfo stack.Metadata) (name.Reference, error) {
+func (c *Client) processRunImageName(runImage, targetRegistry string, builderStackInfo stack.Metadata) string {
 	if runImage != "" {
-		return name.ParseReference(runImage, name.WeakValidation)
+		c.logger.Verbose("Using provided run-image %s", style.Symbol(runImage))
+		return runImage
 	}
 	var localMirrors []string
 	localRunImageConfig := c.config.GetRunImage(builderStackInfo.RunImage.Image)
@@ -124,11 +123,21 @@ func (c *Client) processRunImageName(runImage, targetRegistry string, builderSta
 		localMirrors = localRunImageConfig.Mirrors
 	}
 	runImageName := builderStackInfo.GetBestMirror(targetRegistry, localMirrors)
-	return name.ParseReference(runImageName, name.WeakValidation)
+
+	// log run image source
+	if runImageName == builderStackInfo.GetBestMirror(targetRegistry, []string{}) {
+		if runImageName == builderStackInfo.RunImage.Image {
+			c.logger.Verbose("Selected run image %s from builder", style.Symbol(runImageName))
+		} else {
+			c.logger.Verbose("Selected run image mirror %s from builder", style.Symbol(runImageName))
+		}
+	} else {
+		c.logger.Verbose("Selected run image mirror %s from local config", style.Symbol(runImageName))
+	}
+	return runImageName
 }
 
 func (c *Client) validateRunImage(context context.Context, name string, noPull bool, publish bool, expectedStack string) (image.Image, error) {
-	fmt.Println("fetching run image", name)
 	img, err := c.imageFetcher.Fetch(context, name, !publish, !noPull)
 	if err != nil {
 		return nil, err
@@ -143,14 +152,14 @@ func (c *Client) validateRunImage(context context.Context, name string, noPull b
 	return img, nil
 }
 
-func (c *Client) processTagReference(imageName string) (name.Reference, error) {
+func (c *Client) validateImageReference(imageName string) (name.Reference, error) {
 	if imageName == "" {
 		return nil, errors.New("image name is a required parameter")
 	}
 	if _, err := name.ParseReference(imageName, name.WeakValidation); err != nil {
 		return nil, err
 	}
-	ref, err := name.NewTag(imageName, name.WeakValidation);
+	ref, err := name.NewTag(imageName, name.WeakValidation)
 	if err != nil {
 		return nil, fmt.Errorf("'%s' is not a tag reference", imageName)
 	}
@@ -160,24 +169,29 @@ func (c *Client) processTagReference(imageName string) (name.Reference, error) {
 
 func (c *Client) processAppDir(appDir string) (string, error) {
 	if appDir == "" {
-		return os.Getwd()
+		var err error
+		appDir, err = os.Getwd()
+		if err != nil {
+			return "", err
+		}
 	}
 	if fi, err := os.Stat(appDir); err != nil {
 		return "", err
 	} else if !fi.IsDir() {
-		return "", fmt.Errorf("'%s' is not a directory", appDir)
+		return "", fmt.Errorf("%s is not a directory", appDir)
 	}
-	return appDir, nil
+	return filepath.Abs(appDir)
 }
 
 func (c *Client) processBuildpacks(buildpacks []string) ([]buildpack.Buildpack, builder.GroupMetadata, error) {
 	group := builder.GroupMetadata{Buildpacks: []builder.GroupBuildpack{}}
-	bps := []buildpack.Buildpack{}
+	var bps []buildpack.Buildpack
 	for _, bp := range buildpacks {
 		if isLocalBuildpack(bp) {
 			if runtime.GOOS == "windows" {
 				return nil, builder.GroupMetadata{}, fmt.Errorf("directory buildpacks are not implemented on windows")
 			}
+			c.logger.Verbose("fetching buildpack from %s", style.Symbol(bp))
 			fetchedBP, err := c.buildpackFetcher.FetchBuildpack(bp)
 			if err != nil {
 				return nil, builder.GroupMetadata{}, errors.Wrapf(err, "failed to fetch buildpack from uri '%s'", bp)
@@ -209,19 +223,22 @@ func (c *Client) parseBuildpack(bp string) (string, string) {
 }
 
 func (c *Client) createEphemeralBuilder(rawBuilderImage image.Image, env map[string]string, group builder.GroupMetadata, buildpacks []buildpack.Buildpack) (*builder.Builder, error) {
+	origBuilderName := rawBuilderImage.Name()
 	bldr, err := builder.New(rawBuilderImage, fmt.Sprintf("pack.local/builder/%x:latest", randString(10)))
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "invalid builder '%s'", origBuilderName)
 	}
 	bldr.SetEnv(env)
 	if len(group.Buildpacks) > 0 {
+		c.logger.Verbose("setting custom order")
 		bldr.SetOrder([]builder.GroupMetadata{
 			group,
 		})
 	}
 	for _, bp := range buildpacks {
+		c.logger.Verbose("adding buildpack %s version %s to builder", style.Symbol(bp.ID), style.Symbol(bp.Version))
 		if err := bldr.AddBuildpack(bp); err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, "failed to add buildpack '%s:%s' to builder", bp.ID, bp.Version)
 		}
 	}
 	if err := bldr.Save(); err != nil {
