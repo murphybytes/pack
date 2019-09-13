@@ -2,8 +2,11 @@
 package logging
 
 import (
+	"bytes"
 	"fmt"
 	"io"
+	"regexp"
+	"sync"
 
 	"github.com/buildpack/pack/style"
 )
@@ -56,22 +59,63 @@ func GetDebugWriter(l Logger) io.Writer {
 
 // PrefixWriter will prefix writes
 type PrefixWriter struct {
-	out    io.Writer
-	prefix string
+	sync.Mutex
+	buffer           bytes.Buffer
+	out              io.Writer
+	prefix           string
+	colorCodeMatcher *regexp.Regexp
 }
 
-// NewPrefixWriter writes by w will be prefixed
-func NewPrefixWriter(w io.Writer, prefix string) *PrefixWriter {
-	return &PrefixWriter{
+// NewPrefixWriter produces writes that are prefixed and optionally stripped of ANSI color codes.
+func NewPrefixWriter(w io.Writer, wantColor bool, prefix string) *PrefixWriter {
+	pw := PrefixWriter{
 		out:    w,
 		prefix: fmt.Sprintf("[%s] ", style.Prefix(prefix)),
 	}
+	if !wantColor {
+		pw.colorCodeMatcher = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+		pw.prefix = string(pw.colorCodeMatcher.ReplaceAll([]byte(pw.prefix), []byte("")))
+	}
+	return &pw
 }
 
-// Writes bytes to the embedded log function
+const lineFeed = "\n"
+
+// Write buffers input, writing it to underlying writer when a line feed in encountered.
 func (w *PrefixWriter) Write(buf []byte) (int, error) {
-	_, _ = fmt.Fprint(w.out, w.prefix+string(buf))
-	return len(buf), nil
+	w.Lock()
+	defer w.Unlock()
+	var err error
+	n, _ := w.buffer.Write(buf)
+
+	if bytes.HasSuffix(buf, []byte(lineFeed)) {
+		contents := w.buffer.Bytes()
+		w.buffer.Reset()
+
+		if w.colorCodeMatcher != nil {
+			contents = w.colorCodeMatcher.ReplaceAll(contents, []byte(""))
+		}
+		_, err = fmt.Fprint(w.out, w.prefix+string(contents))
+	}
+
+	return n, err
+}
+
+// Close writes any partial buffer data.
+func (w *PrefixWriter) Close() error {
+	w.Lock()
+	defer w.Unlock()
+	if w.buffer.Len() == 0 {
+		return nil
+	}
+	contents := w.buffer.Bytes()
+	w.buffer.Reset()
+
+	if w.colorCodeMatcher != nil {
+		contents = w.colorCodeMatcher.ReplaceAll(contents, []byte(""))
+	}
+	_, err := fmt.Fprintln(w.out, w.prefix+string(contents))
+	return err
 }
 
 // Tip logs a tip.

@@ -12,11 +12,13 @@ import (
 	"github.com/docker/docker/api/types"
 	dcontainer "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+	"github.com/fatih/color"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/pkg/errors"
 
-	"github.com/buildpack/pack/internal/archive"
 	"github.com/buildpack/pack/internal/container"
+
+	"github.com/buildpack/pack/internal/archive"
 	"github.com/buildpack/pack/logging"
 )
 
@@ -154,12 +156,17 @@ func (p *Phase) Run(ctx context.Context) error {
 		return errors.Wrapf(err, "failed to copy files to '%s' container", p.name)
 	}
 
+	debugWriter := logging.NewPrefixWriter(logging.GetDebugWriter(p.logger), !color.NoColor, p.name)
+	defer debugWriter.Close()
+	debugErrorWriter := logging.NewPrefixWriter(logging.GetDebugErrorWriter(p.logger), !color.NoColor, p.name)
+	defer debugErrorWriter.Close()
+
 	return container.Run(
 		ctx,
 		p.docker,
 		p.ctr.ID,
-		logging.NewPrefixWriter(logging.GetDebugWriter(p.logger), p.name),
-		logging.NewPrefixWriter(logging.GetDebugErrorWriter(p.logger), p.name),
+		debugWriter,
+		debugErrorWriter,
 	)
 }
 
